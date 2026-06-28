@@ -1891,7 +1891,11 @@ def make_question_reading(user_question: str, user_id: int, username: str | None
         f"{make_v13_tarot_reading(cards, user_question)}"
     ), cards
 
-
+def format_cards_list(cards):
+    text = ""
+    for card in cards:
+        text += f"• {card['name']}\n"
+    return text
 
 def make_love_reading(user_question: str, user_id: int, username: str | None = None):
     cards = draw_cards(3)
