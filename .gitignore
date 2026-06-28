@@ -1,0 +1,22 @@
+# Environment
+.env
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# macOS
+.DS_Store
+
+# Local logs / analytics
+history.json
+analytics.json
+dialogs.jsonl
+
+# Archives / downloaded sources
+*.zip
+TarotCards-main/
