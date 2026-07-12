@@ -74,6 +74,89 @@ OUTPUT_LIMITS = {
 }
 
 
+CLARIFICATION_QUESTIONS = {
+    "personal_question": (
+        "В какой сфере вы сильнее всего чувствуете эту неопределённость: "
+        "отношения, работа, образ жизни или внутреннее состояние?"
+    ),
+    "love": (
+        "Какой конкретный эпизод или повторяющаяся ситуация в этом контакте "
+        "сейчас беспокоит вас больше всего?"
+    ),
+    "career": (
+        "Какое конкретное рабочее решение вы сейчас рассматриваете?"
+    ),
+    "full": (
+        "Какую сферу вы хотите поставить в центр расклада: отношения, работу, "
+        "текущее решение или общее состояние?"
+    ),
+}
+
+
+BROAD_QUESTION_MARKERS = (
+    "что мне важно понять",
+    "что мне нужно понять",
+    "что нужно менять",
+    "что изменить",
+    "куда двигаться",
+    "что происходит в моей жизни",
+    "что меня ждет",
+    "что будет дальше",
+    "общий вопрос",
+    "не понимаю что делать",
+)
+
+
+CONTEXT_DETAIL_MARKERS = (
+    "работ",
+    "карьер",
+    "началь",
+    "зарплат",
+    "отношен",
+    "общен",
+    "контакт",
+    "муж",
+    "парн",
+    "девуш",
+    "напис",
+    "переезд",
+    "учеб",
+    "проект",
+    "предлож",
+    "уволь",
+    "развод",
+    "покуп",
+)
+
+
+def assess_question_context(spread_type: str, user_question: str) -> dict[str, str]:
+    """Decide whether a reading has enough concrete context to be useful.
+
+    This is deliberately conservative: only clearly broad questions are paused.
+    It performs no AI call and never tries to infer the user's hidden situation.
+    """
+    question = " ".join((user_question or "").lower().replace("ё", "е").split())
+
+    if spread_type == "daily_card":
+        return {"status": "ready", "clarifying_question": "", "reason": ""}
+
+    has_broad_marker = any(marker in question for marker in BROAD_QUESTION_MARKERS)
+    has_detail_marker = any(marker in question for marker in CONTEXT_DETAIL_MARKERS)
+    has_concrete_detail = has_detail_marker or len(question.split()) >= 12
+
+    if has_broad_marker and not has_concrete_detail:
+        return {
+            "status": "needs_clarification",
+            "clarifying_question": CLARIFICATION_QUESTIONS.get(
+                spread_type,
+                CLARIFICATION_QUESTIONS["personal_question"],
+            ),
+            "reason": "В вопросе пока не названа конкретная ситуация или сфера.",
+        }
+
+    return {"status": "ready", "clarifying_question": "", "reason": ""}
+
+
 def prepare_cards_with_positions(
     cards: list[dict[str, Any]],
     spread_type: str,
