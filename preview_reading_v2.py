@@ -1,83 +1,136 @@
-"""One-off quality preview for Reading Engine v2.
+"""Manual quality preview for Reading Engine v2.
 
-This script is not imported by the Telegram bot. Run it manually to compare a
-single Vertex AI response against the current reading engine.
+This script is not imported by the Telegram bot. It runs three independent
+scenarios to test answer quality outside the exemplar included in the prompt.
 """
 
 from ai_reader import ask_gemini
 from reading_engine_v2 import build_reading_v2_prompt
 
 
-QUESTION = "Не понимаю, писать ему первой или нет?"
-
-
-CARDS = [
+SCENARIOS = [
     {
-        "name": "Маг",
-        "general": (
-            "Со стороны заметна активность, инициатива, умение привлекать внимание "
-            "и задавать тон общению. Поведение может выглядеть уверенным и собранным."
-        ),
-        "love": (
-            "В отношениях Маг показывает активную подачу, инициативу, яркое проявление "
-            "или попытку задавать тон общению. Контакт может быть живым, но важно "
-            "смотреть на действия, а не только на слова."
-        ),
-        "question": "Кто сейчас задаёт тон ситуации — словами, действиями или инициативой?",
-        "advice": "Отделите реальную инициативу от красивой подачи.",
-        "tags": ["initiative", "action", "communication"],
+        "title": "ОТНОШЕНИЯ",
+        "spread_type": "love",
+        "topic": "love",
+        "question": "Мы тепло общаемся, но потом он надолго пропадает. Стоит ли продолжать этот контакт?",
+        "cards": [
+            {
+                "name": "Солнце",
+                "general": "Тепло, открытость, заметная радость и ясное проявление.",
+                "love": "В контакте есть живое тепло, удовольствие от общения и моменты открытости.",
+                "question": "Что в этом контакте действительно приносит тепло?",
+                "advice": "Отделите приятный эпизод от устойчивой динамики.",
+                "tags": ["warmth", "openness", "joy"],
+            },
+            {
+                "name": "Отшельник",
+                "general": "Дистанция, пауза, замедление и обращение к собственному пространству.",
+                "love": "Напряжение создают дистанция, редкий контакт или несовпадение темпа сближения.",
+                "question": "Как часто близость сменяется дистанцией?",
+                "advice": "Заметьте реальный ритм контакта.",
+                "tags": ["distance", "pause", "solitude"],
+            },
+            {
+                "name": "Умеренность",
+                "general": "Мера, постепенность, спокойный темп и соединение различий.",
+                "love": "Опорой может стать неспешный темп без попытки ускорить или удержать контакт.",
+                "question": "Какой темп общения будет бережным для вас?",
+                "advice": "Не вкладывайте больше, чем контакт способен поддержать сейчас.",
+                "tags": ["pace", "balance", "patience"],
+            },
+        ],
     },
     {
-        "name": "Луна",
-        "general": (
-            "Со стороны можно легко запутаться: разные сигналы могут противоречить "
-            "друг другу."
-        ),
-        "love": (
-            "В отношениях Луна показывает неясность, смешанные сигналы, "
-            "недоговорённость и риск додумывать за другого человека. "
-            "Лучше отделять факты от ощущений."
-        ),
-        "question": "Что здесь факт, а что только догадка?",
-        "advice": "Не достраивайте смысл там, где пока мало данных.",
-        "tags": ["unclear", "mixed_signals", "fog"],
+        "title": "КАРЬЕРА",
+        "spread_type": "career",
+        "topic": "career",
+        "question": "Мне предлагают новую работу с большей зарплатой, но обязанности пока описаны расплывчато. Соглашаться?",
+        "cards": [
+            {
+                "name": "Колесница",
+                "general": "Движение, амбиция, управление направлением и быстрый переход.",
+                "career": "Ситуация содержит возможность заметного продвижения и требует самостоятельного управления курсом.",
+                "question": "Куда именно ведёт этот переход?",
+                "advice": "Определите цель смены работы.",
+                "tags": ["movement", "ambition", "direction"],
+            },
+            {
+                "name": "Луна",
+                "general": "Неясность, смешанные сигналы и недостаток проверяемой информации.",
+                "career": "Главное препятствие — размытые условия, неизвестные ожидания или неполная картина роли.",
+                "question": "Каких условий вы пока не знаете?",
+                "advice": "Запросите конкретику до решения.",
+                "tags": ["uncertainty", "missing_information", "risk"],
+            },
+            {
+                "name": "Император",
+                "general": "Структура, ответственность, правила, полномочия и границы.",
+                "career": "Направление действия — прояснить зону ответственности, руководителя, полномочия и критерии результата.",
+                "question": "Какие договорённости сделают роль управляемой?",
+                "advice": "Зафиксируйте ключевые условия письменно.",
+                "tags": ["structure", "authority", "boundaries"],
+            },
+        ],
     },
     {
-        "name": "Справедливость",
-        "general": (
-            "Со стороны это выглядит как необходимость ясности, баланса, честных "
-            "правил, фактов и конкретных договорённостей."
-        ),
-        "love": (
-            "В отношениях Справедливость показывает вопрос баланса: кто проявляется, "
-            "кто ждёт, где есть взаимность, а где контакт держится на догадках."
-        ),
-        "question": "Какие факты здесь важнее впечатлений?",
-        "advice": "Сравните слова, действия и договорённости.",
-        "tags": ["facts", "balance", "clarity"],
+        "title": "ОБЩИЙ ВОПРОС",
+        "spread_type": "personal_question",
+        "topic": "general",
+        "question": "Я чувствую, что застряла, но не понимаю, что именно нужно менять первым.",
+        "cards": [
+            {
+                "name": "Повешенный",
+                "general": "Пауза, прежний взгляд перестаёт работать, необходимость увидеть ситуацию иначе.",
+                "question": "Где ожидание уже не даёт нового результата?",
+                "advice": "Назовите одну область, в которой вы дольше всего откладываете решение.",
+                "tags": ["pause", "perspective", "stagnation"],
+            },
+            {
+                "name": "Башня",
+                "general": "Разрушение неработающей конструкции, резкая ясность и освобождение от иллюзии устойчивости.",
+                "question": "Какая конструкция держится только потому, что страшно её пересмотреть?",
+                "advice": "Не ломайте всё сразу; найдите один элемент, который уже явно не работает.",
+                "tags": ["change", "truth", "release"],
+            },
+            {
+                "name": "Звезда",
+                "general": "Ориентир, восстановление, честная надежда и направление, которое возвращает живость.",
+                "question": "Что возвращает вам ощущение смысла и движения?",
+                "advice": "Сделайте небольшой шаг к тому, что даёт энергию, и оцените эффект.",
+                "tags": ["hope", "direction", "renewal"],
+            },
+        ],
     },
 ]
 
 
+def card_names(cards: list[dict]) -> str:
+    return " — ".join(card["name"] for card in cards)
+
+
 def main() -> None:
-    prompt = build_reading_v2_prompt(
-        spread_type="love",
-        user_question=QUESTION,
-        cards=CARDS,
-        topic="love",
-    )
+    print("\n===== READING ENGINE V2: 3 CONTROL TESTS =====\n")
 
-    print("\n===== READING ENGINE V2 PREVIEW =====\n")
-    print(f"Вопрос: {QUESTION}")
-    print("Карты: Маг — Луна — Справедливость\n")
+    for index, scenario in enumerate(SCENARIOS, start=1):
+        print(f"===== TEST {index}: {scenario['title']} =====\n")
+        print(f"Вопрос: {scenario['question']}")
+        print(f"Карты: {card_names(scenario['cards'])}\n")
 
-    answer = ask_gemini(prompt)
+        prompt = build_reading_v2_prompt(
+            spread_type=scenario["spread_type"],
+            user_question=scenario["question"],
+            cards=scenario["cards"],
+            topic=scenario["topic"],
+        )
+        answer = ask_gemini(prompt)
 
-    if not answer:
-        raise SystemExit("Vertex AI не вернул ответ. Проверьте журнал ошибки выше.")
+        if not answer:
+            print("Vertex AI не вернул ответ для этого сценария.\n")
+            continue
 
-    print(answer.strip())
-    print("\n===== END PREVIEW =====\n")
+        print(answer.strip())
+        print(f"\n===== END TEST {index} =====\n")
 
 
 if __name__ == "__main__":
