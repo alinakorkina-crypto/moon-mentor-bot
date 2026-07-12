@@ -5,7 +5,7 @@ scenarios to test answer quality outside the exemplar included in the prompt.
 """
 
 from ai_reader import ask_gemini
-from reading_engine_v2 import build_reading_v2_prompt
+from reading_engine_v2 import assess_question_context, build_reading_v2_prompt
 
 
 SCENARIOS = [
@@ -116,6 +116,18 @@ def main() -> None:
         print(f"===== TEST {index}: {scenario['title']} =====\n")
         print(f"Вопрос: {scenario['question']}")
         print(f"Карты: {card_names(scenario['cards'])}\n")
+
+        context_result = assess_question_context(
+            scenario["spread_type"],
+            scenario["question"],
+        )
+
+        if context_result["status"] == "needs_clarification":
+            print("Нужно уточнение перед раскладом:")
+            print(context_result["clarifying_question"])
+            print(f"\nПричина: {context_result['reason']}")
+            print(f"\n===== END TEST {index} =====\n")
+            continue
 
         prompt = build_reading_v2_prompt(
             spread_type=scenario["spread_type"],
