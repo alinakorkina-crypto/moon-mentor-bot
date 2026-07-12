@@ -92,8 +92,7 @@ def build_repair_prompt(
     max_words: int = 260,
 ) -> str:
     """Build a narrowly scoped rewrite request for an already generated answer."""
-    issue_lines = "
-".join(
+    issue_lines = "\n".join(
         f"- {item['type']}: {item['instruction']} "
         f"Проблемный фрагмент: «{item['excerpt']}»."
         for item in issues
