@@ -6,6 +6,7 @@ scenarios to test answer quality outside the exemplar included in the prompt.
 
 from ai_reader import ask_gemini
 from reading_engine_v2 import assess_question_context, build_reading_v2_prompt
+from reading_quality_v2 import repair_answer_if_needed
 
 
 SCENARIOS = [
@@ -141,7 +142,30 @@ def main() -> None:
             print("Vertex AI не вернул ответ для этого сценария.\n")
             continue
 
-        print(answer.strip())
+        original_answer = answer.strip()
+        final_answer, issues, repaired = repair_answer_if_needed(
+            original_answer,
+            user_question=scenario["question"],
+            ai_call=ask_gemini,
+            max_words=260,
+        )
+
+        print("----- ИСХОДНЫЙ ОТВЕТ -----\n")
+        print(original_answer)
+
+        if issues:
+            print("\n----- НАЙДЕННЫЕ НАРУШЕНИЯ -----\n")
+            for issue in issues:
+                print(f"- {issue['type']}: {issue['excerpt']}")
+
+        if repaired:
+            print("\n----- ИСПРАВЛЕННЫЙ ОТВЕТ -----\n")
+            print(final_answer)
+        elif issues:
+            print("\nИсправление не получено; исходный ответ сохранён.")
+        else:
+            print("\nНарушений не найдено; второй AI-вызов не выполнялся.")
+
         print(f"\n===== END TEST {index} =====\n")
 
 
