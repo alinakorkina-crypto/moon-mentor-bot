@@ -195,5 +195,27 @@ class ReadingEngineV2Tests(unittest.TestCase):
         self.assertEqual(result["status"], "ready")
 
 
+    def test_17_broad_question_allows_word_between_what_and_change(self):
+        result = assess_question_context(
+            "personal_question",
+            "Я чувствую, что застряла, но не понимаю, что именно нужно менять первым.",
+        )
+        self.assertEqual(result["status"], "needs_clarification")
+
+    def test_18_broad_stuck_question_needs_clarification(self):
+        result = assess_question_context(
+            "personal_question",
+            "Я будто застряла и не знаю, куда двигаться дальше.",
+        )
+        self.assertEqual(result["status"], "needs_clarification")
+
+    def test_19_concrete_personal_question_is_not_blocked(self):
+        result = assess_question_context(
+            "personal_question",
+            "Почему я постоянно откладываю важные решения, хотя сроки уже подходят?",
+        )
+        self.assertEqual(result["status"], "ready")
+
+
 if __name__ == "__main__":
     unittest.main()
