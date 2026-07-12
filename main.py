@@ -2028,6 +2028,22 @@ async def start_command(message: Message):
 async def handle_buttons(message: Message):
     user_id = message.from_user.id
 
+    navigation_buttons = {
+        "⬅️ Главное меню",
+        "💬 Поговорить с Moon",
+        "🔮 Расклад Таро",
+        "🌙 О Moon",
+        "🌙 Для чего нужен Moon",
+        "🔮 Как работают расклады",
+        "🃏 Карта дня",
+        "❤️ Отношения",
+        "💼 Карьера",
+        "💭 Свой вопрос",
+        "🌙 Полный расклад",
+    }
+
+    if message.text in navigation_buttons:
+        user_mode[user_id] = None
 
     if message.text == "/admin":
         if not is_admin(user_id):
