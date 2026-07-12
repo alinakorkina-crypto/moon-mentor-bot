@@ -2,6 +2,7 @@ import unittest
 
 from reading_engine_v2 import (
     SPREAD_POSITIONS,
+    assess_question_context,
     build_reading_v2_prompt,
     prepare_cards_with_positions,
 )
@@ -165,6 +166,33 @@ class ReadingEngineV2Tests(unittest.TestCase):
         self.assertIn("Короткие абзацы, удобные для Telegram", prompt)
         self.assertIn('Обращение к пользователю на "вы"', prompt)
         self.assertIn("Выведите только готовый расклад", prompt)
+
+
+    def test_13_broad_general_question_needs_clarification(self):
+        result = assess_question_context(
+            "personal_question",
+            "Я застряла и не понимаю, что нужно менять первым.",
+        )
+        self.assertEqual(result["status"], "needs_clarification")
+        self.assertIn("В какой сфере", result["clarifying_question"])
+
+    def test_14_concrete_relationship_question_is_ready(self):
+        result = assess_question_context(
+            "love",
+            "Мы тепло общаемся, но потом он надолго пропадает. Стоит ли продолжать контакт?",
+        )
+        self.assertEqual(result["status"], "ready")
+
+    def test_15_concrete_career_question_is_ready(self):
+        result = assess_question_context(
+            "career",
+            "Мне предлагают работу с большей зарплатой, но обязанности описаны расплывчато.",
+        )
+        self.assertEqual(result["status"], "ready")
+
+    def test_16_daily_card_never_requires_clarification(self):
+        result = assess_question_context("daily_card", "Карта дня")
+        self.assertEqual(result["status"], "ready")
 
 
 if __name__ == "__main__":
