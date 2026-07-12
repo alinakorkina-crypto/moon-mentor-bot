@@ -140,9 +140,23 @@ def assess_question_context(spread_type: str, user_question: str) -> dict[str, s
     if spread_type == "daily_card":
         return {"status": "ready", "clarifying_question": "", "reason": ""}
 
-    has_broad_marker = any(marker in question for marker in BROAD_QUESTION_MARKERS)
-    has_detail_marker = any(marker in question for marker in CONTEXT_DETAIL_MARKERS)
-    has_concrete_detail = has_detail_marker or len(question.split()) >= 12
+    has_exact_broad_marker = any(
+        marker in question for marker in BROAD_QUESTION_MARKERS
+    )
+    has_broad_state = any(
+        marker in question
+        for marker in ("застрял", "потерял", "не понимаю куда", "не знаю куда")
+    )
+    asks_unspecified_change = (
+        "что" in question
+        and any(marker in question for marker in ("менять", "изменить"))
+    )
+    has_broad_marker = (
+        has_exact_broad_marker or has_broad_state or asks_unspecified_change
+    )
+    has_concrete_detail = any(
+        marker in question for marker in CONTEXT_DETAIL_MARKERS
+    )
 
     if has_broad_marker and not has_concrete_detail:
         return {
