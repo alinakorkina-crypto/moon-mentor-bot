@@ -1034,10 +1034,13 @@ def validate_final_answer(text: str, cards: list[dict], user_question: str, spre
 
 def extract_observations(cards: list[dict], limit: int = 5) -> list[str]:
     observations = []
+
     for card in cards:
-        for observation in CARD_OBSERVATIONS.get(card["name"], []):
-            if observation not in observations:
-                observations.append(observation)
+        observation = OBSERVABLE_CARD_DYNAMICS.get(card["name"])
+
+        if observation and observation not in observations:
+            observations.append(observation)
+
     return observations[:limit]
 
 def detect_llm_language(text: str) -> list[str]:
