@@ -1,4 +1,4 @@
-"""Experimental one-call Reading Engine v3.6 for Moon Mentor.
+"""Experimental one-call Reading Engine v3.7 for Moon Mentor.
 
 The module is isolated from main.py and Reading Engine v2. It builds a compact
 topic-aware prompt, makes exactly one AI call, and only removes Markdown
@@ -43,11 +43,13 @@ SPREAD_INSTRUCTIONS = {
         "и один вопрос для наблюдения. Не предсказывайте событие дня."
     ),
     "love": (
-        "Соберите тепло и длительные паузы в один рисунок контакта. Отделите приятность "
-        "общения от его устойчивости. Не решайте, продолжать ли контакт, и не объясняйте "
-        "причины поведения другого человека. Помогите пользователю увидеть, что можно "
-        "проверить в реальном взаимодействии: взаимную инициативу, регулярность и "
-        "собственную приемлемую меру участия."
+        "Перед ответом молча разделите известное и неизвестное. Известны только прямо "
+        "описанные пользователем эпизоды и действия; причины, искренность, намерения и "
+        "будущая устойчивость контакта неизвестны. Центральная мысль разбора — различие "
+        "между качеством тёплых эпизодов и непрерывностью контакта. Свяжите карты вокруг "
+        "этой мысли, а карту меры направьте на определение подходящего пользователю "
+        "формата, не на ожидание или подстройку. В финале покажите один наблюдаемый "
+        "аспект взаимности: самостоятельную инициативу, возобновление и поддержание связи."
     ),
     "career": (
         "Сохраните сильную логику карьерного разбора: сопоставьте привлекательность "
@@ -71,12 +73,14 @@ SPREAD_INSTRUCTIONS = {
 
 LOVE_STRUCTURE = """
 Напишите три лёгких абзаца без заголовков:
-1. Назовите главный рисунок контакта и напряжение между теплом и паузами.
-2. Свяжите карты в одну мысль о качестве контакта, не объясняя другого человека.
-3. Покажите один проверяемый признак взаимности или устойчивости и завершите
-   мягким вопросом о том, какой формат контакта подходит самому пользователю.
+1. Нейтрально отразите только описанные факты и назовите различие между теплом
+   отдельных эпизодов и устойчивостью контакта.
+2. Соберите сочетание в одну мысль, используя по имени не больше двух карт.
+   Оставьте причины поведения другого человека неизвестными.
+3. Назовите один наблюдаемый аспект взаимности без оценки и завершите одним
+   мягким вопросом о подходящем пользователю формате контакта.
 
-Общий объём — 110–160 слов. Одна мысль не должна повторяться.
+Общий объём — 110–145 слов. Не повторяйте одну мысль и не давайте указаний.
 """.strip()
 
 
@@ -219,7 +223,11 @@ def clean_reading_v3_answer(answer: str) -> str:
     return cleaned
 
 
-def inspect_reading_v3_answer(answer: str, spread_type: str) -> dict[str, Any]:
+def inspect_reading_v3_answer(
+    answer: str,
+    spread_type: str,
+    card_names: list[str] | None = None,
+) -> dict[str, Any]:
     """Report format deviations without changing or regenerating the answer."""
     words = len(
         re.findall(
@@ -231,7 +239,7 @@ def inspect_reading_v3_answer(answer: str, spread_type: str) -> dict[str, Any]:
     min_words, max_words = (
         (90, 130)
         if spread_type == "daily_card"
-        else ((110, 160) if spread_type == "love" else (130, 170))
+        else ((110, 145) if spread_type == "love" else (130, 170))
     )
     issues: list[str] = []
     if not min_words <= words <= max_words:
@@ -241,11 +249,20 @@ def inspect_reading_v3_answer(answer: str, spread_type: str) -> dict[str, Any]:
         issues.append(f"paragraph_count:{len(paragraphs)}")
     if re.search(r"\b(?:ты|твой|твоя|твои|тебе|тебя)\b", answer, re.IGNORECASE):
         issues.append("informal_address")
+    named_cards = []
+    if card_names:
+        named_cards = [
+            name for name in card_names
+            if re.search(rf"(?<!\\w){re.escape(name)}(?!\\w)", answer, re.IGNORECASE)
+        ]
+    if spread_type == "love" and len(named_cards) > 2:
+        issues.append(f"named_cards:{len(named_cards)}")
     return {
         "word_count": words,
         "paragraph_count": len(paragraphs),
         "within_word_target": min_words <= words <= max_words,
         "has_expected_paragraphs": len(paragraphs) == expected_paragraphs,
+        "named_card_count": len(named_cards),
         "issues": issues,
     }
 
