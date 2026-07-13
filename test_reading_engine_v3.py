@@ -57,15 +57,15 @@ class ReadingEngineV3Tests(unittest.TestCase):
         )
         self.assertIn("строго 180–220 слов", prompt)
 
-    def test_prompt_requires_four_paragraph_structure(self):
+    def test_prompt_requires_four_paragraph_thirteen_sentence_structure(self):
         prompt = build_reading_v3_prompt(
             "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
         )
         self.assertIn("ровно четыре коротких абзаца", prompt)
-        self.assertIn("35–45 слов", prompt)
-        self.assertIn("80–95 слов", prompt)
-        self.assertIn("35–40 слов", prompt)
-        self.assertIn("30–40 слов", prompt)
+        self.assertIn("ровно 13 предложений", prompt)
+        self.assertIn("Три предложения", prompt)
+        self.assertIn("Пять предложений", prompt)
+        self.assertIn("Два предложения", prompt)
 
     def test_prompt_requires_direct_answer_and_central_theme(self):
         prompt = build_reading_v3_prompt(
@@ -101,11 +101,35 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertIn("подстраиваться", instruction)
         self.assertIn("поддерживают ли контакт двое", instruction)
 
+    def test_love_instruction_forbids_accepting_current_dynamic(self):
+        instruction = SPREAD_INSTRUCTIONS["love"]
+        self.assertIn("принимать текущую динамику", instruction)
+        self.assertIn("снижать ожидания", instruction)
+
+    def test_prompt_forbids_mechanical_card_language(self):
+        prompt = build_reading_v3_prompt(
+            "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
+        )
+        self.assertIn("карты показывают", prompt)
+        self.assertIn("карта указывает", prompt)
+        self.assertIn("карта подталкивает", prompt)
+        self.assertIn("Не двигайтесь по картам по очереди", prompt)
+
+    def test_prompt_forbids_invented_interactions(self):
+        prompt = build_reading_v3_prompt(
+            "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
+        )
+        self.assertIn("Не придумывай встречу", prompt)
+        self.assertIn("совместное занятие", prompt)
+        self.assertIn("сообщение, разговор, эксперимент", prompt)
+        self.assertIn("определить личную границу", prompt)
+
     def test_career_instruction_treats_unknowns_as_missing_information(self):
         instruction = SPREAD_INSTRUCTIONS["career"]
         self.assertIn("Недостаток информации", instruction)
         self.assertIn("не скрытой опасностью", instruction)
         self.assertIn("Не обещайте успех", instruction)
+        self.assertIn("ключом к успеху", instruction)
 
     def test_personal_question_does_not_invent_a_sphere(self):
         instruction = SPREAD_INSTRUCTIONS["personal_question"]
