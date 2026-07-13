@@ -6,6 +6,7 @@ from reading_engine_v3 import (
     build_reading_v3_prompt,
     clean_reading_v3_answer,
     generate_reading_v3,
+    inspect_reading_v3_answer,
     prepare_cards_v3,
 )
 
@@ -57,15 +58,13 @@ class ReadingEngineV3Tests(unittest.TestCase):
         )
         self.assertIn("строго 180–220 слов", prompt)
 
-    def test_prompt_requires_four_paragraph_thirteen_sentence_structure(self):
+    def test_prompt_requires_four_natural_paragraphs(self):
         prompt = build_reading_v3_prompt(
             "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
         )
-        self.assertIn("ровно четыре коротких абзаца", prompt)
-        self.assertIn("ровно 13 предложений", prompt)
-        self.assertIn("Три предложения", prompt)
-        self.assertIn("Пять предложений", prompt)
-        self.assertIn("Два предложения", prompt)
+        self.assertIn("Напишите четыре коротких абзаца", prompt)
+        self.assertIn("Естественность и точность важнее", prompt)
+        self.assertNotIn("ровно 13 предложений", prompt)
 
     def test_prompt_requires_direct_answer_and_central_theme(self):
         prompt = build_reading_v3_prompt(
@@ -100,6 +99,9 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertIn("принимать человека «таким, какой он есть»", instruction)
         self.assertIn("подстраиваться", instruction)
         self.assertIn("поддерживают ли контакт двое", instruction)
+        self.assertIn("не делайте вывод об", instruction)
+        self.assertIn("отсутствии взаимности", instruction)
+        self.assertIn("предложите пользователю проверить это как критерий", instruction)
 
     def test_love_instruction_forbids_accepting_current_dynamic(self):
         instruction = SPREAD_INSTRUCTIONS["love"]
@@ -114,6 +116,15 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertIn("карта указывает", prompt)
         self.assertIn("карта подталкивает", prompt)
         self.assertIn("Не двигайтесь по картам по очереди", prompt)
+
+    def test_prompt_forbids_strengthening_user_facts(self):
+        prompt = build_reading_v3_prompt(
+            "love", "Он иногда пропадает.", SAMPLE_CARDS[:3], "love"
+        )
+        self.assertIn("«пропадает» не превращай в «полный уход»", prompt)
+        self.assertIn("«глубокую дистанцию»", prompt)
+        self.assertIn("Не делай вывод об отсутствии взаимности", prompt)
+        self.assertIn("Недостаток информации не называй скрытой", prompt)
 
     def test_prompt_forbids_invented_interactions(self):
         prompt = build_reading_v3_prompt(
@@ -130,6 +141,9 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertIn("не скрытой опасностью", instruction)
         self.assertIn("Не обещайте успех", instruction)
         self.assertIn("ключом к успеху", instruction)
+        self.assertIn("после письменной конкретизации", instruction)
+        self.assertIn("не соглашаться сначала", instruction)
+        self.assertIn("Не предполагайте", instruction)
 
     def test_personal_question_does_not_invent_a_sphere(self):
         instruction = SPREAD_INSTRUCTIONS["personal_question"]
@@ -221,6 +235,31 @@ class ReadingEngineV3Tests(unittest.TestCase):
     def test_cleanup_does_not_remove_unpaired_or_non_markdown_star(self):
         answer = "Цена * неизвестна; формула 2 * 3 остаётся без изменений."
         self.assertEqual(clean_reading_v3_answer(answer), answer)
+
+    def test_diagnostics_report_valid_multi_card_format(self):
+        answer = ("слово " * 45).strip()
+        answer = "\n\n".join([answer] * 4)
+        report = inspect_reading_v3_answer(answer, "love")
+        self.assertEqual(report["word_count"], 180)
+        self.assertEqual(report["paragraph_count"], 4)
+        self.assertTrue(report["within_word_target"])
+        self.assertTrue(report["has_expected_paragraphs"])
+        self.assertEqual(report["issues"], [])
+
+    def test_diagnostics_report_deviations_without_rewriting(self):
+        answer = "Короткий ответ.\n\nВторой абзац."
+        report = inspect_reading_v3_answer(answer, "career")
+        self.assertEqual(answer, "Короткий ответ.\n\nВторой абзац.")
+        self.assertIn("word_count:4", report["issues"])
+        self.assertIn("paragraph_count:2", report["issues"])
+
+    def test_daily_diagnostics_use_daily_targets(self):
+        answer = ("фокус " * 30).strip()
+        answer = "\n\n".join([answer] * 3)
+        report = inspect_reading_v3_answer(answer, "daily_card")
+        self.assertEqual(report["word_count"], 90)
+        self.assertTrue(report["within_word_target"])
+        self.assertTrue(report["has_expected_paragraphs"])
 
     def test_generation_makes_exactly_one_ai_call(self):
         calls = []
