@@ -50,7 +50,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
     def test_prompt_requires_light_three_paragraph_format(self):
         prompt = build_reading_v3_prompt("love", "Продолжать?", SAMPLE_CARDS[:3], "love")
         self.assertIn("три лёгких абзаца", prompt)
-        self.assertIn("110–160 слов", prompt)
+        self.assertIn("110–145 слов", prompt)
         self.assertIn("Одна мысль не должна повторяться", prompt)
 
     def test_prompt_forbids_deciding_for_user(self):
@@ -89,9 +89,10 @@ class ReadingEngineV3Tests(unittest.TestCase):
 
     def test_love_instruction_leaves_mutuality_open(self):
         instruction = SPREAD_INSTRUCTIONS["love"]
-        self.assertIn("Отделите приятность общения от его устойчивости", instruction)
-        self.assertIn("Не решайте, продолжать ли контакт", instruction)
-        self.assertIn("взаимную инициативу, регулярность", instruction)
+        self.assertIn("разделите известное и неизвестное", instruction)
+        self.assertIn("качество тёплых эпизодов", instruction)
+        self.assertIn("не на ожидание или подстройку", instruction)
+        self.assertIn("самостоятельную инициативу", instruction)
 
     def test_career_instruction_does_not_choose_or_promise(self):
         instruction = SPREAD_INSTRUCTIONS["career"]
@@ -181,6 +182,34 @@ class ReadingEngineV3Tests(unittest.TestCase):
         answer = paragraph + "\n\nТебе важно решить самой.\n\nЧто подходит именно вам?"
         report = inspect_reading_v3_answer(answer, "love")
         self.assertIn("informal_address", report["issues"])
+
+    def test_love_diagnostics_limit_named_cards(self):
+        answer = (
+            "Солнце отражает тепло контакта.\n\n"
+            "Отшельник добавляет тему паузы.\n\n"
+            "Умеренность возвращает вопрос к вашей мере."
+        )
+        report = inspect_reading_v3_answer(
+            answer,
+            "love",
+            ["Солнце", "Отшельник", "Умеренность"],
+        )
+        self.assertEqual(report["named_card_count"], 3)
+        self.assertIn("named_cards:3", report["issues"])
+
+    def test_love_diagnostics_accept_two_named_cards(self):
+        answer = (
+            "Солнце отражает описанное тепло.\n\n"
+            "Отшельник добавляет тему паузы.\n\n"
+            "Какой формат контакта подходит вам?"
+        )
+        report = inspect_reading_v3_answer(
+            answer,
+            "love",
+            ["Солнце", "Отшельник", "Умеренность"],
+        )
+        self.assertEqual(report["named_card_count"], 2)
+        self.assertNotIn("named_cards:3", report["issues"])
 
     def test_daily_diagnostics_keep_daily_target(self):
         paragraph = ("фокус " * 30).strip()
