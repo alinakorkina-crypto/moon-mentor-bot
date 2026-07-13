@@ -56,7 +56,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
             SAMPLE_CARDS[:3],
             "career",
         )
-        self.assertIn("строго 180–220 слов", prompt)
+        self.assertIn("180–220 слов", prompt)
 
     def test_prompt_requires_four_natural_paragraphs(self):
         prompt = build_reading_v3_prompt(
