@@ -65,7 +65,8 @@ class ReadingEngineV3Tests(unittest.TestCase):
 
     def test_system_instruction_requires_all_card_synthesis(self):
         self.assertIn("используйте все карты и позиции", SYSTEM_INSTRUCTION_V3)
-        self.assertIn("один общий вывод", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("но создавайте один", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("общий вывод", SYSTEM_INSTRUCTION_V3)
         self.assertIn("а не получать отдельный пересказ", SYSTEM_INSTRUCTION_V3)
 
     def test_system_instruction_does_not_impose_service_labels(self):
