@@ -68,8 +68,9 @@ class ReadingEngineV3Tests(unittest.TestCase):
         prompt = build_reading_v3_prompt("love", "Что здесь важно?", SAMPLE_CARDS[:3], "love")
         self.assertIn("общий рисунок сочетания", prompt)
         self.assertIn("не пересказывай карты по очереди", prompt)
-        self.assertIn("назови не больше двух карт", prompt)
-        self.assertIn("влияние остальных включи в общий смысл", prompt)
+        self.assertIn("Все карты должны менять общий вывод", prompt)
+        self.assertIn("нельзя строить", prompt)
+        self.assertIn("последовательность отдельных значений", prompt)
 
     def test_prompt_forbids_service_language_in_answer(self):
         prompt = build_reading_v3_prompt("career", "Что учесть?", SAMPLE_CARDS[:3], "career")
@@ -81,6 +82,13 @@ class ReadingEngineV3Tests(unittest.TestCase):
         ):
             self.assertIn(phrase, prompt)
 
+    def test_prompt_starts_without_greeting_and_answers_substance(self):
+        prompt = build_reading_v3_prompt(
+            "love", "Продолжать контакт?", SAMPLE_CARDS[:3], "love"
+        )
+        self.assertIn("без приветствия", prompt)
+        self.assertIn("Первое предложение должно отвечать по существу", prompt)
+
     def test_prompt_requests_natural_style(self):
         prompt = build_reading_v3_prompt("love", "Что учесть?", SAMPLE_CARDS[:3], "love")
         self.assertIn("Избегай канцелярита", prompt)
@@ -90,16 +98,16 @@ class ReadingEngineV3Tests(unittest.TestCase):
     def test_love_instruction_leaves_mutuality_open(self):
         instruction = SPREAD_INSTRUCTIONS["love"]
         self.assertIn("разделите известное и неизвестное", instruction)
-        self.assertIn("качеством тёплых эпизодов", instruction)
-        self.assertIn("не на ожидание или подстройку", instruction)
-        self.assertIn("самостоятельную инициативу", instruction)
+        self.assertIn("от какого наблюдаемого условия", instruction)
+        self.assertIn("Используйте все три карты", instruction)
+        self.assertIn("третья меняет общий вывод", instruction)
 
     def test_career_instruction_does_not_choose_or_promise(self):
         instruction = SPREAD_INSTRUCTIONS["career"]
-        self.assertIn("Сохраните сильную логику карьерного разбора", instruction)
+        self.assertIn("Большая зарплата — названное преимущество", instruction)
+        self.assertIn("недостаток информации", instruction)
+        self.assertIn("Свяжите все карты в один вывод", instruction)
         self.assertIn("Не решайте за пользователя", instruction)
-        self.assertIn("структура подчинения", instruction)
-        self.assertIn("зафиксированные письменно", instruction)
 
     def test_career_keeps_dedicated_stable_profile(self):
         prompt = build_reading_v3_prompt(
@@ -183,7 +191,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
         report = inspect_reading_v3_answer(answer, "love")
         self.assertIn("informal_address", report["issues"])
 
-    def test_love_diagnostics_limit_named_cards(self):
+    def test_love_diagnostics_accept_all_three_named_cards(self):
         answer = (
             "Солнце отражает тепло контакта.\n\n"
             "Отшельник добавляет тему паузы.\n\n"
@@ -195,9 +203,9 @@ class ReadingEngineV3Tests(unittest.TestCase):
             ["Солнце", "Отшельник", "Умеренность"],
         )
         self.assertEqual(report["named_card_count"], 3)
-        self.assertIn("named_cards:3", report["issues"])
+        self.assertNotIn("named_cards:3", report["issues"])
 
-    def test_love_diagnostics_accept_two_named_cards(self):
+    def test_love_diagnostics_flag_missing_third_card(self):
         answer = (
             "Солнце отражает описанное тепло.\n\n"
             "Отшельник добавляет тему паузы.\n\n"
@@ -209,7 +217,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
             ["Солнце", "Отшельник", "Умеренность"],
         )
         self.assertEqual(report["named_card_count"], 2)
-        self.assertNotIn("named_cards:3", report["issues"])
+        self.assertIn("named_cards:2", report["issues"])
 
     def test_daily_diagnostics_keep_daily_target(self):
         paragraph = ("фокус " * 30).strip()
