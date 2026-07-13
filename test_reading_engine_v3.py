@@ -50,8 +50,8 @@ class ReadingEngineV3Tests(unittest.TestCase):
     def test_prompt_requires_light_three_paragraph_format(self):
         prompt = build_reading_v3_prompt("love", "Продолжать?", SAMPLE_CARDS[:3], "love")
         self.assertIn("три естественных абзаца", prompt)
-        self.assertIn("130–170 слов", prompt)
-        self.assertIn("Не растягивайте мысль ради объёма", prompt)
+        self.assertIn("110–160 слов", prompt)
+        self.assertIn("Одна мысль не должна повторяться", prompt)
 
     def test_prompt_forbids_deciding_for_user(self):
         prompt = build_reading_v3_prompt("career", "Соглашаться?", SAMPLE_CARDS[:3], "career")
@@ -68,8 +68,8 @@ class ReadingEngineV3Tests(unittest.TestCase):
         prompt = build_reading_v3_prompt("love", "Что здесь важно?", SAMPLE_CARDS[:3], "love")
         self.assertIn("общий рисунок сочетания", prompt)
         self.assertIn("не пересказывай карты по очереди", prompt)
-        self.assertIn("Упомяните по имени одну или", prompt)
-        self.assertIn("две карты", prompt)
+        self.assertIn("назови не больше двух карт", prompt)
+        self.assertIn("влияние остальных включи в общий смысл", prompt)
 
     def test_prompt_forbids_service_language_in_answer(self):
         prompt = build_reading_v3_prompt("career", "Что учесть?", SAMPLE_CARDS[:3], "career")
@@ -89,15 +89,32 @@ class ReadingEngineV3Tests(unittest.TestCase):
 
     def test_love_instruction_leaves_mutuality_open(self):
         instruction = SPREAD_INSTRUCTIONS["love"]
-        self.assertIn("Не решайте, продолжать ли отношения", instruction)
-        self.assertIn("не предлагайте приспосабливаться", instruction)
-        self.assertIn("оставьте её открытым вопросом", instruction)
+        self.assertIn("Отделите приятность общения от его устойчивости", instruction)
+        self.assertIn("Не решайте, продолжать ли контакт", instruction)
+        self.assertIn("взаимную инициативу, регулярность", instruction)
 
     def test_career_instruction_does_not_choose_or_promise(self):
         instruction = SPREAD_INSTRUCTIONS["career"]
+        self.assertIn("Сохраните сильную логику карьерного разбора", instruction)
         self.assertIn("Не решайте за пользователя", instruction)
-        self.assertIn("Не обещайте успех", instruction)
-        self.assertIn("конкретику, которая помогла бы оценить", instruction)
+        self.assertIn("структура подчинения", instruction)
+        self.assertIn("зафиксированные письменно", instruction)
+
+    def test_career_keeps_dedicated_stable_profile(self):
+        prompt = build_reading_v3_prompt(
+            "career", "Соглашаться?", SAMPLE_CARDS[:3], "career"
+        )
+        self.assertIn("CAREER", "CAREER")
+        self.assertIn("конфликт между привлекательностью предложения", prompt)
+        self.assertIn("обязанностями, полномочиями и структурой роли", prompt)
+        self.assertIn("130–170 слов", prompt)
+
+    def test_prompt_requires_formal_address(self):
+        prompt = build_reading_v3_prompt(
+            "love", "Продолжать?", SAMPLE_CARDS[:3], "love"
+        )
+        self.assertIn("только на «вы»", prompt)
+        self.assertIn("не переходи на «ты»", prompt)
 
     def test_prompt_forbids_mind_reading_and_predictions(self):
         prompt = build_reading_v3_prompt("love", "Почему он пропадает?", SAMPLE_CARDS[:3], "love")
@@ -159,6 +176,12 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertEqual(answer, "Короткий ответ.\n\nВторой абзац.")
         self.assertIn("word_count:4", report["issues"])
         self.assertIn("paragraph_count:2", report["issues"])
+
+    def test_diagnostics_flag_informal_address(self):
+        paragraph = ("Выбор остаётся за вами. " * 7).strip()
+        answer = paragraph + "\n\nТебе важно решить самой.\n\nЧто подходит именно вам?"
+        report = inspect_reading_v3_answer(answer, "love")
+        self.assertIn("informal_address", report["issues"])
 
     def test_daily_diagnostics_keep_daily_target(self):
         paragraph = ("фокус " * 30).strip()
