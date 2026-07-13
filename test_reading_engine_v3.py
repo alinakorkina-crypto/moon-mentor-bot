@@ -68,7 +68,8 @@ class ReadingEngineV3Tests(unittest.TestCase):
         prompt = build_reading_v3_prompt("love", "Что здесь важно?", SAMPLE_CARDS[:3], "love")
         self.assertIn("общий рисунок сочетания", prompt)
         self.assertIn("не пересказывай карты по очереди", prompt)
-        self.assertIn("одну или две карты", prompt)
+        self.assertIn("Упомяните по имени одну или", prompt)
+        self.assertIn("две карты", prompt)
 
     def test_prompt_forbids_service_language_in_answer(self):
         prompt = build_reading_v3_prompt("career", "Что учесть?", SAMPLE_CARDS[:3], "career")
