@@ -106,8 +106,12 @@ def build_reading_v3_prompt(
 
 def clean_reading_v3_answer(answer: str) -> str:
     """Remove only paired Markdown emphasis stars without rewriting text."""
-    cleaned = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", answer)
-    cleaned = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", cleaned)
+    cleaned = re.sub(r"\*\*(?=\S)([^*\n]*?\S)\*\*", r"\1", answer)
+    cleaned = re.sub(
+        r"(?<!\*)\*(?=\S)([^*\n]*?\S)\*(?!\*)",
+        r"\1",
+        cleaned,
+    )
     return cleaned
 
 
