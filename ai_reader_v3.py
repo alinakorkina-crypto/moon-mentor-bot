@@ -6,9 +6,12 @@ This module is not imported by main.py or the working bot.
 from google import genai
 from google.genai import types
 
+from reading_engine_v3 import SYSTEM_INSTRUCTION_V3
+
 
 MODEL_NAME = "gemini-3.5-flash"
 GENERATION_CONFIG = types.GenerateContentConfig(
+    system_instruction=SYSTEM_INSTRUCTION_V3,
     temperature=0.2,
     top_p=0.8,
     candidate_count=1,
