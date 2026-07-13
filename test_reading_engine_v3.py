@@ -49,7 +49,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
 
     def test_prompt_requires_light_three_paragraph_format(self):
         prompt = build_reading_v3_prompt("love", "Продолжать?", SAMPLE_CARDS[:3], "love")
-        self.assertIn("три естественных абзаца", prompt)
+        self.assertIn("три лёгких абзаца", prompt)
         self.assertIn("110–160 слов", prompt)
         self.assertIn("Одна мысль не должна повторяться", prompt)
 
@@ -104,7 +104,6 @@ class ReadingEngineV3Tests(unittest.TestCase):
         prompt = build_reading_v3_prompt(
             "career", "Соглашаться?", SAMPLE_CARDS[:3], "career"
         )
-        self.assertIn("CAREER", "CAREER")
         self.assertIn("конфликт между привлекательностью предложения", prompt)
         self.assertIn("обязанностями, полномочиями и структурой роли", prompt)
         self.assertIn("130–170 слов", prompt)
