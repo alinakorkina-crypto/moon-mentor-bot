@@ -88,7 +88,7 @@ class ReadingQualityV2Tests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
     def test_count_words_handles_russian_text(self):
-        self.assertEqual(count_words("Один короткий ответ — без повторов."), 6)
+        self.assertEqual(count_words("Один короткий ответ — без повторов."), 5)
 
 
 if __name__ == "__main__":
