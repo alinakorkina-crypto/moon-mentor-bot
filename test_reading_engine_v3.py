@@ -85,6 +85,58 @@ class ReadingEngineV3Tests(unittest.TestCase):
         )
         self.assertIn("Не перечисляй карты по очереди", prompt)
 
+    def test_prompt_forbids_invented_reasons_for_distance(self):
+        prompt = build_reading_v3_prompt(
+            "love",
+            "Он надолго пропадает. Продолжать контакт?",
+            SAMPLE_CARDS,
+            "love",
+        )
+        self.assertIn(
+            "Не объясняй их потребностью в пространстве",
+            prompt,
+        )
+        self.assertIn("внутренним ритмом", prompt)
+        self.assertIn("склонности или готовность", prompt)
+
+    def test_prompt_forbids_predictions_about_other_person(self):
+        prompt = build_reading_v3_prompt(
+            "love",
+            "Он надолго пропадает. Продолжать контакт?",
+            SAMPLE_CARDS,
+            "love",
+        )
+        self.assertIn(
+            "Не предсказывай, что человек вернётся",
+            prompt,
+        )
+        self.assertIn(
+            "Не описывай будущий результат так, будто он обязательно наступит",
+            prompt,
+        )
+
+    def test_prompt_requires_silent_minimum_word_check(self):
+        prompt = build_reading_v3_prompt(
+            "career",
+            "Принимать предложение?",
+            SAMPLE_CARDS,
+            "career",
+        )
+        self.assertIn("Перед выдачей молча проверь объём", prompt)
+        self.assertIn("Если слов меньше 180", prompt)
+        self.assertIn("подсчёт не показывай", prompt)
+
+    def test_prompt_forbids_unsupported_certainty_phrases(self):
+        prompt = build_reading_v3_prompt(
+            "career",
+            "Принимать предложение?",
+            SAMPLE_CARDS,
+            "career",
+        )
+        self.assertIn("карта подтверждает", prompt)
+        self.assertIn("это не отторжение", prompt)
+        self.assertIn("скрытые детали", prompt)
+
     def test_topic_meanings_are_used(self):
         prepared = prepare_cards_v3(SAMPLE_CARDS, "career", "career")
         self.assertEqual(prepared[0]["meaning"], SAMPLE_CARDS[0]["career"])
