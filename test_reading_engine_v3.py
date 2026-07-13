@@ -55,7 +55,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
 
     def test_prompt_forbids_deciding_for_user(self):
         prompt = build_reading_v3_prompt("career", "Соглашаться?", SAMPLE_CARDS[:3], "career")
-        self.assertIn("не решай за человека", prompt)
+        self.assertIn("не выбирай за человека", prompt)
         for phrase in ("«стоит»", "«не стоит»", "«соглашайтесь»", "«откажитесь»"):
             self.assertIn(phrase, prompt)
         self.assertIn("не указывай, какое решение принять", prompt)
@@ -113,8 +113,8 @@ class ReadingEngineV3Tests(unittest.TestCase):
         prompt = build_reading_v3_prompt(
             "career", "Соглашаться?", SAMPLE_CARDS[:3], "career"
         )
-        self.assertIn("конфликт между привлекательностью предложения", prompt)
-        self.assertIn("обязанностями, полномочиями и структурой роли", prompt)
+        self.assertIn("выбор упирается в конкретный", prompt)
+        self.assertIn("Соберите все карты в один вывод", prompt)
         self.assertIn("130–170 слов", prompt)
 
     def test_prompt_requires_formal_address(self):
