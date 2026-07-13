@@ -1,8 +1,12 @@
-"""Manual comparison preview for the isolated Reading Engine v3 experiment.
+"""Manual preview for the isolated Reading Engine v3.2 experiment.
 
-The script makes one AI request per scenario and does not import main.py or
-Reading Engine v2.
+By default the script keeps the low-cost two-scenario comparison (love and
+career). Other spread types can be selected explicitly from the command line.
+Each selected scenario makes exactly one AI request.
 """
+
+import argparse
+import re
 
 from ai_reader import ask_gemini
 from reading_engine_v3 import generate_reading_v3
@@ -10,6 +14,7 @@ from reading_engine_v3 import generate_reading_v3
 
 SCENARIOS = [
     {
+        "key": "love",
         "title": "ОТНОШЕНИЯ",
         "spread_type": "love",
         "topic": "love",
@@ -21,21 +26,22 @@ SCENARIOS = [
             {
                 "name": "Солнце",
                 "general": "Тепло, открытость и ясное проявление.",
-                "love": "Тепло, открытость и удовольствие от контакта.",
+                "love": "Символика тепла, открытости и удовольствия от контакта.",
             },
             {
                 "name": "Отшельник",
                 "general": "Дистанция, пауза и замедление.",
-                "love": "Дистанция, пауза и отдельный ритм контакта.",
+                "love": "Символика дистанции, паузы и отдельности.",
             },
             {
                 "name": "Умеренность",
                 "general": "Мера, постепенность и согласование темпа.",
-                "love": "Мера, постепенность и баланс участия.",
+                "love": "Символика меры, постепенности и баланса участия.",
             },
         ],
     },
     {
+        "key": "career",
         "title": "КАРЬЕРА",
         "spread_type": "career",
         "topic": "career",
@@ -61,6 +67,68 @@ SCENARIOS = [
             },
         ],
     },
+    {
+        "key": "personal",
+        "title": "СВОЙ ВОПРОС",
+        "spread_type": "personal_question",
+        "topic": "general",
+        "question": "Я застряла и не понимаю, что нужно менять первым.",
+        "cards": [
+            {
+                "name": "Повешенный",
+                "general": "Пауза и необходимость посмотреть на ситуацию иначе.",
+            },
+            {
+                "name": "Башня",
+                "general": "Сбой прежней конструкции и резкое изменение взгляда.",
+            },
+            {
+                "name": "Звезда",
+                "general": "Ориентир, надежда и постепенное восстановление направления.",
+            },
+        ],
+    },
+    {
+        "key": "daily",
+        "title": "КАРТА ДНЯ",
+        "spread_type": "daily_card",
+        "topic": "general",
+        "question": "Какой символический фокус дня предлагает карта?",
+        "cards": [
+            {
+                "name": "Сила",
+                "general": "Выдержка, мягкая устойчивость и управление импульсом.",
+            },
+        ],
+    },
+    {
+        "key": "full",
+        "title": "ПОЛНЫЙ РАСКЛАД",
+        "spread_type": "full",
+        "topic": "general",
+        "question": (
+            "Пользователь выбрал полный расклад без отдельного вопроса. "
+            "Дайте общий символический обзор без выдумывания обстоятельств."
+        ),
+        "cards": [
+            {
+                "name": "Смерть",
+                "general": "Смена формата и завершение прежнего этапа.",
+            },
+            {
+                "name": "Луна",
+                "general": "Неясность и недостаток проверяемой информации.",
+            },
+            {
+                "name": "Императрица",
+                "general": "Поддержка, рост и создание более живых условий.",
+            },
+            {
+                "name": "Мир",
+                "general": "Границы, завершённость и оформленный результат.",
+            },
+        ],
+    },
 ]
 
 
@@ -69,13 +137,40 @@ def card_names(cards: list[dict]) -> str:
 
 
 def count_words(text: str) -> int:
-    return len(text.split())
+    return len(
+        re.findall(
+            r"[A-Za-zА-Яа-яЁё0-9]+(?:[-–][A-Za-zА-Яа-яЁё0-9]+)?",
+            text,
+        )
+    )
+
+
+def select_scenarios(selection: str) -> list[dict]:
+    if selection == "core":
+        return [item for item in SCENARIOS if item["key"] in {"love", "career"}]
+    if selection == "all":
+        return SCENARIOS
+    return [item for item in SCENARIOS if item["key"] == selection]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--scenario",
+        choices=["core", "all", "love", "career", "personal", "daily", "full"],
+        default="core",
+        help="core keeps the default two-request love/career comparison",
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
-    print("\n===== READING ENGINE V3: 2-SCENARIO COMPARISON =====\n")
+    selected = select_scenarios(parse_args().scenario)
+    print(
+        f"\n===== READING ENGINE V3.2: {len(selected)} CONTROL SCENARIO(S) =====\n"
+    )
 
-    for index, scenario in enumerate(SCENARIOS, start=1):
+    for index, scenario in enumerate(selected, start=1):
         calls = 0
 
         def one_counted_call(prompt: str) -> str | None:
