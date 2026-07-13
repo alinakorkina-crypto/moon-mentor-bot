@@ -51,7 +51,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
         prompt = build_reading_v3_prompt("love", "Продолжать?", SAMPLE_CARDS[:3], "love")
         self.assertIn("три лёгких абзаца", prompt)
         self.assertIn("110–145 слов", prompt)
-        self.assertIn("Одна мысль не должна повторяться", prompt)
+        self.assertIn("Не повторяйте одну мысль", prompt)
 
     def test_prompt_forbids_deciding_for_user(self):
         prompt = build_reading_v3_prompt("career", "Соглашаться?", SAMPLE_CARDS[:3], "career")
@@ -90,7 +90,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
     def test_love_instruction_leaves_mutuality_open(self):
         instruction = SPREAD_INSTRUCTIONS["love"]
         self.assertIn("разделите известное и неизвестное", instruction)
-        self.assertIn("качество тёплых эпизодов", instruction)
+        self.assertIn("качеством тёплых эпизодов", instruction)
         self.assertIn("не на ожидание или подстройку", instruction)
         self.assertIn("самостоятельную инициативу", instruction)
 
