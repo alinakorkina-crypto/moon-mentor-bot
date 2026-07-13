@@ -1,4 +1,4 @@
-"""Manual preview for the isolated Reading Engine v3.2 experiment.
+"""Manual preview for the isolated Reading Engine v3.3 experiment.
 
 By default the script keeps the low-cost two-scenario comparison (love and
 career). Other spread types can be selected explicitly from the command line.
@@ -167,7 +167,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     selected = select_scenarios(parse_args().scenario)
     print(
-        f"\n===== READING ENGINE V3.2: {len(selected)} CONTROL SCENARIO(S) =====\n"
+        f"\n===== READING ENGINE V3.3: {len(selected)} CONTROL SCENARIO(S) =====\n"
     )
 
     for index, scenario in enumerate(selected, start=1):
