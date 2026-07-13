@@ -3,6 +3,7 @@ import unittest
 from reading_engine_v3 import (
     SPREAD_INSTRUCTIONS,
     SPREAD_POSITIONS,
+    SYSTEM_INSTRUCTION_V3,
     build_reading_v3_prompt,
     clean_reading_v3_answer,
     generate_reading_v3,
@@ -53,47 +54,37 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertIn("110–145 слов", prompt)
         self.assertIn("Не повторяйте одну мысль", prompt)
 
-    def test_prompt_forbids_deciding_for_user(self):
-        prompt = build_reading_v3_prompt("career", "Соглашаться?", SAMPLE_CARDS[:3], "career")
-        self.assertIn("не выбирай за человека", prompt)
-        for phrase in ("«стоит»", "«не стоит»", "«соглашайтесь»", "«откажитесь»"):
-            self.assertIn(phrase, prompt)
-        self.assertIn("не указывай, какое решение принять", prompt)
+    def test_system_instruction_keeps_decision_with_user(self):
+        self.assertIn("Не принимайте решение за пользователя", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("не подталкивайте его к одному варианту", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("Окончательный выбор всегда остаётся", SYSTEM_INSTRUCTION_V3)
 
-    def test_yes_no_question_gets_decision_frame_not_verdict(self):
-        prompt = build_reading_v3_prompt("love", "Продолжать?", SAMPLE_CARDS[:3], "love")
-        self.assertIn("главное напряжение выбора и недостающий факт", prompt)
+    def test_system_instruction_requires_direct_conditional_answer(self):
+        self.assertIn("в первом предложении", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("ключевое условие выбора", SYSTEM_INSTRUCTION_V3)
 
-    def test_prompt_requires_synthesis_not_card_sequence(self):
-        prompt = build_reading_v3_prompt("love", "Что здесь важно?", SAMPLE_CARDS[:3], "love")
-        self.assertIn("общий рисунок сочетания", prompt)
-        self.assertIn("не пересказывай карты по очереди", prompt)
-        self.assertIn("Все карты должны менять общий вывод", prompt)
-        self.assertIn("нельзя строить", prompt)
-        self.assertIn("последовательность отдельных значений", prompt)
+    def test_system_instruction_requires_all_card_synthesis(self):
+        self.assertIn("используйте все карты и позиции", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("один общий вывод", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("а не получать отдельный пересказ", SYSTEM_INSTRUCTION_V3)
 
-    def test_prompt_forbids_service_language_in_answer(self):
-        prompt = build_reading_v3_prompt("career", "Что учесть?", SAMPLE_CARDS[:3], "career")
+    def test_system_instruction_does_not_impose_service_labels(self):
         for phrase in (
-            "«центральная дилемма»",
-            "«наблюдаемый критерий»",
-            "«условие решения»",
-            "«практический ориентир»",
+            "центральная дилемма",
+            "наблюдаемый критерий",
+            "условие решения",
+            "практический ориентир",
         ):
-            self.assertIn(phrase, prompt)
+            self.assertNotIn(phrase, SYSTEM_INSTRUCTION_V3)
 
-    def test_prompt_starts_without_greeting_and_answers_substance(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Продолжать контакт?", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("без приветствия", prompt)
-        self.assertIn("Первое предложение должно отвечать по существу", prompt)
+    def test_system_instruction_starts_without_greeting(self):
+        self.assertIn("без приветствия", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("Начинайте сразу с ответа", SYSTEM_INSTRUCTION_V3)
 
-    def test_prompt_requests_natural_style(self):
-        prompt = build_reading_v3_prompt("love", "Что учесть?", SAMPLE_CARDS[:3], "love")
-        self.assertIn("Избегай канцелярита", prompt)
-        self.assertIn("Пиши короткими фразами", prompt)
-        self.assertIn("тепло и естественно", prompt)
+    def test_system_instruction_requests_natural_style(self):
+        self.assertIn("легко, тепло и естественно", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("Избегайте канцелярита", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("эзотерического пафоса", SYSTEM_INSTRUCTION_V3)
 
     def test_love_instruction_leaves_mutuality_open(self):
         instruction = SPREAD_INSTRUCTIONS["love"]
@@ -117,24 +108,18 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertIn("Соберите все карты в один вывод", prompt)
         self.assertIn("130–170 слов", prompt)
 
-    def test_prompt_requires_formal_address(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Продолжать?", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("только на «вы»", prompt)
-        self.assertIn("не переходи на «ты»", prompt)
+    def test_system_instruction_requires_formal_address(self):
+        self.assertIn("Пишите на «вы»", SYSTEM_INSTRUCTION_V3)
 
-    def test_prompt_forbids_mind_reading_and_predictions(self):
-        prompt = build_reading_v3_prompt("love", "Почему он пропадает?", SAMPLE_CARDS[:3], "love")
-        self.assertIn("мысли, чувства, желания", prompt)
-        self.assertIn("скрытые причины", prompt)
-        self.assertIn("Не предсказывай исход", prompt)
+    def test_system_instruction_forbids_mind_reading_and_predictions(self):
+        self.assertIn("не как предсказание", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("Не объясняйте мотивы", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("мысли другого человека", SYSTEM_INSTRUCTION_V3)
 
-    def test_prompt_marks_question_as_only_fact_source(self):
-        question = "Он иногда пропадает."
-        prompt = build_reading_v3_prompt("love", question, SAMPLE_CARDS[:3], "love")
-        self.assertIn("Фактами о ситуации считай только слова пользователя", prompt)
-        self.assertIn(question, prompt)
+    def test_system_instruction_marks_question_as_only_fact_source(self):
+        self.assertIn("Фактами считайте только сведения", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("Значения карт", SYSTEM_INSTRUCTION_V3)
+        self.assertIn("не подтверждают", SYSTEM_INSTRUCTION_V3)
 
     def test_personal_question_does_not_invent_sphere(self):
         instruction = SPREAD_INSTRUCTIONS["personal_question"]
