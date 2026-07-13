@@ -40,185 +40,92 @@ SAMPLE_CARDS = [
 
 
 class ReadingEngineV3Tests(unittest.TestCase):
-    def test_prompt_contains_exact_question_and_all_cards(self):
+    def test_prompt_contains_exact_question_and_cards(self):
         question = "Стоит ли продолжать этот контакт?"
-        prompt = build_reading_v3_prompt(
-            "love", question, SAMPLE_CARDS[:3], "love"
-        )
+        prompt = build_reading_v3_prompt("love", question, SAMPLE_CARDS[:3], "love")
         self.assertIn(question, prompt)
         for card in SAMPLE_CARDS[:3]:
             self.assertIn(card["name"], prompt)
 
-    def test_prompt_requires_180_to_220_words(self):
-        prompt = build_reading_v3_prompt(
-            "career",
-            "Соглашаться ли на новую работу?",
-            SAMPLE_CARDS[:3],
-            "career",
-        )
-        self.assertIn("180–220 слов", prompt)
+    def test_prompt_requires_light_three_paragraph_format(self):
+        prompt = build_reading_v3_prompt("love", "Продолжать?", SAMPLE_CARDS[:3], "love")
+        self.assertIn("три естественных абзаца", prompt)
+        self.assertIn("130–170 слов", prompt)
+        self.assertIn("Не растягивайте мысль ради объёма", prompt)
 
-    def test_prompt_requires_four_natural_paragraphs(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("Напишите четыре коротких абзаца", prompt)
-        self.assertIn("Естественность и точность важнее", prompt)
-        self.assertNotIn("ровно 13 предложений", prompt)
+    def test_prompt_forbids_deciding_for_user(self):
+        prompt = build_reading_v3_prompt("career", "Соглашаться?", SAMPLE_CARDS[:3], "career")
+        self.assertIn("не решай за человека", prompt)
+        for phrase in ("«стоит»", "«не стоит»", "«соглашайтесь»", "«откажитесь»"):
+            self.assertIn(phrase, prompt)
+        self.assertIn("не указывай, какое решение принять", prompt)
 
-    def test_prompt_requires_direct_answer_and_central_theme(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("Начни с прямого ответа", prompt)
-        self.assertIn("одну центральную тему", prompt)
-        self.assertIn("главное противоречие или усиление", prompt)
+    def test_yes_no_question_gets_decision_frame_not_verdict(self):
+        prompt = build_reading_v3_prompt("love", "Продолжать?", SAMPLE_CARDS[:3], "love")
+        self.assertIn("главное напряжение выбора и недостающий факт", prompt)
 
-    def test_prompt_requires_observable_criterion_next_step_and_question(self):
-        prompt = build_reading_v3_prompt(
-            "career", "Принимать предложение?", SAMPLE_CARDS[:3], "career"
-        )
-        self.assertIn("один наблюдаемый критерий", prompt)
-        self.assertIn("одним конкретным следующим шагом", prompt)
-        self.assertIn("одним точным вопросом для размышления", prompt)
+    def test_prompt_requires_synthesis_not_card_sequence(self):
+        prompt = build_reading_v3_prompt("love", "Что здесь важно?", SAMPLE_CARDS[:3], "love")
+        self.assertIn("общий рисунок сочетания", prompt)
+        self.assertIn("не пересказывай карты по очереди", prompt)
+        self.assertIn("одну или две карты", prompt)
 
-    def test_prompt_forbids_separate_card_retellings(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Что важно увидеть?", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn(
-            "Не создавай отдельное толкование для каждой карты",
-            prompt,
-        )
-        self.assertIn("Свяжи карты в одну линию", prompt)
+    def test_prompt_forbids_service_language_in_answer(self):
+        prompt = build_reading_v3_prompt("career", "Что учесть?", SAMPLE_CARDS[:3], "career")
+        for phrase in (
+            "«центральная дилемма»",
+            "«наблюдаемый критерий»",
+            "«условие решения»",
+            "«практический ориентир»",
+        ):
+            self.assertIn(phrase, prompt)
 
-    def test_love_instruction_forbids_waiting_and_adapting(self):
+    def test_prompt_requests_natural_style(self):
+        prompt = build_reading_v3_prompt("love", "Что учесть?", SAMPLE_CARDS[:3], "love")
+        self.assertIn("Избегай канцелярита", prompt)
+        self.assertIn("Пиши короткими фразами", prompt)
+        self.assertIn("тепло и естественно", prompt)
+
+    def test_love_instruction_leaves_mutuality_open(self):
         instruction = SPREAD_INSTRUCTIONS["love"]
-        self.assertIn("Не советуйте ждать", instruction)
-        self.assertIn("терпеть исчезновения", instruction)
-        self.assertIn("принимать человека «таким, какой он есть»", instruction)
-        self.assertIn("подстраиваться", instruction)
-        self.assertIn("поддерживают ли контакт двое", instruction)
-        self.assertIn("не делайте вывод об", instruction)
-        self.assertIn("отсутствии взаимности", instruction)
-        self.assertIn("предложите пользователю проверить это как критерий", instruction)
+        self.assertIn("Не решайте, продолжать ли отношения", instruction)
+        self.assertIn("не предлагайте приспосабливаться", instruction)
+        self.assertIn("оставьте её открытым вопросом", instruction)
 
-    def test_love_instruction_forbids_accepting_current_dynamic(self):
-        instruction = SPREAD_INSTRUCTIONS["love"]
-        self.assertIn("принимать текущую динамику", instruction)
-        self.assertIn("снижать ожидания", instruction)
-
-    def test_prompt_forbids_mechanical_card_language(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("карты показывают", prompt)
-        self.assertIn("карта указывает", prompt)
-        self.assertIn("карта подталкивает", prompt)
-        self.assertIn("Не двигайтесь по картам по очереди", prompt)
-
-    def test_prompt_forbids_strengthening_user_facts(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Он иногда пропадает.", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("«пропадает» не превращай в «полный уход»", prompt)
-        self.assertIn("«глубокую дистанцию»", prompt)
-        self.assertIn("Не делай вывод об отсутствии взаимности", prompt)
-        self.assertIn("Недостаток информации не называй скрытой", prompt)
-
-    def test_prompt_forbids_invented_interactions(self):
-        prompt = build_reading_v3_prompt(
-            "love", "Продолжать общение?", SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("Не придумывай встречу", prompt)
-        self.assertIn("совместное занятие", prompt)
-        self.assertIn("сообщение, разговор, эксперимент", prompt)
-        self.assertIn("определить личную границу", prompt)
-
-    def test_career_instruction_treats_unknowns_as_missing_information(self):
+    def test_career_instruction_does_not_choose_or_promise(self):
         instruction = SPREAD_INSTRUCTIONS["career"]
-        self.assertIn("Недостаток информации", instruction)
-        self.assertIn("не скрытой опасностью", instruction)
+        self.assertIn("Не решайте за пользователя", instruction)
         self.assertIn("Не обещайте успех", instruction)
-        self.assertIn("ключом к успеху", instruction)
-        self.assertIn("после письменной конкретизации", instruction)
-        self.assertIn("не соглашаться сначала", instruction)
-        self.assertIn("Не предполагайте", instruction)
+        self.assertIn("конкретику, которая помогла бы оценить", instruction)
 
-    def test_personal_question_does_not_invent_a_sphere(self):
+    def test_prompt_forbids_mind_reading_and_predictions(self):
+        prompt = build_reading_v3_prompt("love", "Почему он пропадает?", SAMPLE_CARDS[:3], "love")
+        self.assertIn("мысли, чувства, желания", prompt)
+        self.assertIn("скрытые причины", prompt)
+        self.assertIn("Не предсказывай исход", prompt)
+
+    def test_prompt_marks_question_as_only_fact_source(self):
+        question = "Он иногда пропадает."
+        prompt = build_reading_v3_prompt("love", question, SAMPLE_CARDS[:3], "love")
+        self.assertIn("Фактами о ситуации считай только слова пользователя", prompt)
+        self.assertIn(question, prompt)
+
+    def test_personal_question_does_not_invent_sphere(self):
         instruction = SPREAD_INSTRUCTIONS["personal_question"]
         self.assertIn("не придумывайте сферу", instruction)
-        self.assertIn("какого контекста не хватает", instruction)
-
-    def test_full_instruction_uses_four_position_sequence(self):
-        instruction = SPREAD_INSTRUCTIONS["full"]
-        self.assertIn("центральная тема", instruction)
-        self.assertIn("осложнение", instruction)
-        self.assertIn("опора", instruction)
-        self.assertIn("направление внимания", instruction)
-
-    def test_daily_card_has_short_structure_and_no_prediction(self):
-        prompt = build_reading_v3_prompt(
-            "daily_card", "Карта дня", SAMPLE_CARDS[:1], "general"
-        )
-        self.assertIn("90–130 слов", prompt)
-        self.assertIn("Не предсказывайте событие дня", prompt)
-        self.assertNotIn("ровно четыре коротких абзаца", prompt)
 
     def test_daily_and_full_positions_are_defined(self):
         daily = prepare_cards_v3(SAMPLE_CARDS[:1], "daily_card", "general")
         full = prepare_cards_v3(SAMPLE_CARDS, "full", "general")
         self.assertEqual(daily[0]["position"], "Фокус дня")
-        self.assertEqual(
-            [item["position"] for item in full],
-            list(SPREAD_POSITIONS["full"]),
-        )
-
-    def test_prompt_marks_question_as_only_source_of_facts(self):
-        question = "Он надолго пропадает. Продолжать контакт?"
-        prompt = build_reading_v3_prompt(
-            "love", question, SAMPLE_CARDS[:3], "love"
-        )
-        self.assertIn("Единственные допустимые факты о ситуации", prompt)
-        self.assertIn(question, prompt)
-        self.assertIn("Значения карт — символические ракурсы", prompt)
-
-    def test_prompt_forbids_invented_reasons_for_distance(self):
-        prompt = build_reading_v3_prompt(
-            "love",
-            "Он надолго пропадает. Продолжать контакт?",
-            SAMPLE_CARDS[:3],
-            "love",
-        )
-        self.assertIn("Не объясняй паузу или дистанцию", prompt)
-        self.assertIn("внутренним ритмом", prompt)
-        self.assertIn("характером", prompt)
-        self.assertIn("склонности или готовность", prompt)
-
-    def test_prompt_forbids_predictions_about_other_person(self):
-        prompt = build_reading_v3_prompt(
-            "love",
-            "Он надолго пропадает. Продолжать контакт?",
-            SAMPLE_CARDS[:3],
-            "love",
-        )
-        self.assertIn("Не предсказывай, что человек вернётся", prompt)
-        self.assertIn("предполагаемый будущий результат", prompt)
-
-    def test_prompt_forbids_unsupported_certainty_phrases(self):
-        prompt = build_reading_v3_prompt(
-            "career", "Принимать предложение?", SAMPLE_CARDS[:3], "career"
-        )
-        self.assertIn("карта подтверждает", prompt)
-        self.assertIn("это не отторжение", prompt)
-        self.assertIn("скрытые детали", prompt)
+        self.assertEqual([item["position"] for item in full], list(SPREAD_POSITIONS["full"]))
 
     def test_topic_meanings_are_used(self):
         prepared = prepare_cards_v3(SAMPLE_CARDS[:3], "career", "career")
         self.assertEqual(prepared[0]["meaning"], SAMPLE_CARDS[0]["career"])
         self.assertEqual(prepared[1]["meaning"], SAMPLE_CARDS[1]["career"])
 
-    def test_cleanup_removes_bold_and_italic_markers(self):
+    def test_cleanup_removes_only_paired_emphasis(self):
         answer = "Здесь **Солнце** поддерживает *ясный шаг*."
         self.assertEqual(
             clean_reading_v3_answer(answer),
@@ -232,16 +139,15 @@ class ReadingEngineV3Tests(unittest.TestCase):
             "  Первый абзац.\n\nВторой абзац.  ",
         )
 
-    def test_cleanup_does_not_remove_unpaired_or_non_markdown_star(self):
-        answer = "Цена * неизвестна; формула 2 * 3 остаётся без изменений."
+    def test_cleanup_preserves_unpaired_or_non_markdown_star(self):
+        answer = "Цена * неизвестна; формула 2 * 3 остаётся."
         self.assertEqual(clean_reading_v3_answer(answer), answer)
 
-    def test_diagnostics_report_valid_multi_card_format(self):
-        answer = ("слово " * 45).strip()
-        answer = "\n\n".join([answer] * 4)
-        report = inspect_reading_v3_answer(answer, "love")
-        self.assertEqual(report["word_count"], 180)
-        self.assertEqual(report["paragraph_count"], 4)
+    def test_diagnostics_accept_valid_multi_card_format(self):
+        paragraph = ("слово " * 45).strip()
+        report = inspect_reading_v3_answer("\n\n".join([paragraph] * 3), "love")
+        self.assertEqual(report["word_count"], 135)
+        self.assertEqual(report["paragraph_count"], 3)
         self.assertTrue(report["within_word_target"])
         self.assertTrue(report["has_expected_paragraphs"])
         self.assertEqual(report["issues"], [])
@@ -253,10 +159,9 @@ class ReadingEngineV3Tests(unittest.TestCase):
         self.assertIn("word_count:4", report["issues"])
         self.assertIn("paragraph_count:2", report["issues"])
 
-    def test_daily_diagnostics_use_daily_targets(self):
-        answer = ("фокус " * 30).strip()
-        answer = "\n\n".join([answer] * 3)
-        report = inspect_reading_v3_answer(answer, "daily_card")
+    def test_daily_diagnostics_keep_daily_target(self):
+        paragraph = ("фокус " * 30).strip()
+        report = inspect_reading_v3_answer("\n\n".join([paragraph] * 3), "daily_card")
         self.assertEqual(report["word_count"], 90)
         self.assertTrue(report["within_word_target"])
         self.assertTrue(report["has_expected_paragraphs"])
@@ -266,7 +171,7 @@ class ReadingEngineV3Tests(unittest.TestCase):
 
         def fake_ai(prompt):
             calls.append(prompt)
-            return "**Прямой ответ.** Следующий шаг."
+            return "**Разбор.** Вопрос."
 
         result = generate_reading_v3(
             spread_type="love",
@@ -275,12 +180,11 @@ class ReadingEngineV3Tests(unittest.TestCase):
             topic="love",
             ai_call=fake_ai,
         )
-
         self.assertEqual(len(calls), 1)
         self.assertIn("Продолжать контакт?", calls[0])
-        self.assertEqual(result, "Прямой ответ. Следующий шаг.")
+        self.assertEqual(result, "Разбор. Вопрос.")
 
-    def test_empty_ai_answer_returns_empty_string_without_retry(self):
+    def test_empty_ai_answer_returns_empty_without_retry(self):
         calls = []
 
         def fake_ai(prompt):
@@ -294,7 +198,6 @@ class ReadingEngineV3Tests(unittest.TestCase):
             topic="career",
             ai_call=fake_ai,
         )
-
         self.assertEqual(result, "")
         self.assertEqual(len(calls), 1)
 
