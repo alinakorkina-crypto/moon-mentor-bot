@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.5-flash"
 GENERATION_CONFIG = types.GenerateContentConfig(
     temperature=0.2,
     top_p=0.8,
