@@ -8,7 +8,7 @@ Each selected scenario makes exactly one AI request.
 import argparse
 import re
 
-from ai_reader import ask_gemini
+from ai_reader_v3 import ask_gemini_v3
 from reading_engine_v3 import generate_reading_v3, inspect_reading_v3_answer
 
 
@@ -176,7 +176,7 @@ def main() -> None:
         def one_counted_call(prompt: str) -> str | None:
             nonlocal calls
             calls += 1
-            return ask_gemini(prompt)
+            return ask_gemini_v3(prompt)
 
         print(f"===== TEST {index}: {scenario['title']} =====\n")
         print(f"Вопрос: {scenario['question']}")
