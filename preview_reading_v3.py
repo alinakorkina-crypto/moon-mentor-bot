@@ -1,4 +1,4 @@
-"""Manual preview for the isolated Reading Engine v3.6 experiment.
+"""Manual preview for the isolated Reading Engine v3.7 experiment.
 
 By default the script keeps the low-cost two-scenario comparison (love and
 career). Other spread types can be selected explicitly from the command line.
@@ -167,7 +167,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     selected = select_scenarios(parse_args().scenario)
     print(
-        f"\n===== READING ENGINE V3.6: {len(selected)} CONTROL SCENARIO(S) =====\n"
+        f"\n===== READING ENGINE V3.7: {len(selected)} CONTROL SCENARIO(S) =====\n"
     )
 
     for index, scenario in enumerate(selected, start=1):
@@ -194,7 +194,11 @@ def main() -> None:
             print("Vertex AI не вернул ответ.\n")
         else:
             print(answer)
-            report = inspect_reading_v3_answer(answer, scenario["spread_type"])
+            report = inspect_reading_v3_answer(
+                answer,
+                scenario["spread_type"],
+                [card["name"] for card in scenario["cards"]],
+            )
             print(f"\nСлов: {count_words(answer)}")
             print(f"Абзацев: {report['paragraph_count']}")
             print(
