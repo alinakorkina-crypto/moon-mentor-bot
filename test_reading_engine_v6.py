@@ -88,7 +88,10 @@ def initiative_analysis():
             "Колесница поддерживает импульс, Башня нарушает его устойчивость, а "
             "Звезда оставляет возможность открытой без обещания результата."
         ),
-        "symbolic_tendency": "mixed",
+        "user_dilemma": "Оставаться в ожидании первого шага или опираться на факты.",
+        "psychological_focus": "Значение ожидания и личный предел неопределённости.",
+        "reality_anchor": "Фактом будет только самостоятельное продолжение общения.",
+        "symbolic_tendency": "contradictory",
         "direct_answer": "Символическая картина смешанная: возможность есть, подтверждения нет.",
         "observable_criterion": "Самостоятельное содержательное продолжение разговора.",
         "reflection_question": "Какое действие вы сочтёте настоящей инициативой?",
@@ -122,6 +125,9 @@ def choice_analysis():
             "Солнце и Отшельник создают контраст тепла и дистанции, а Умеренность "
             "переводит его в вопрос о приемлемой мере участия."
         ),
+        "user_dilemma": "Ценность тёплого общения сталкивается с ценой долгих пауз.",
+        "psychological_focus": "Совместимость такого ритма с потребностями пользователя.",
+        "reality_anchor": "Взаимность инициативы и фактическая длительность пауз.",
         "symbolic_tendency": "conditional",
         "direct_answer": "Решение зависит от того, подходит ли пользователю такой ритм.",
         "observable_criterion": "Взаимность инициативы после пауз.",
@@ -187,6 +193,8 @@ class RoutingTests(unittest.TestCase):
 class PromptTests(unittest.TestCase):
     def test_schemas_require_complete_payloads(self):
         self.assertIn("card_roles", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("psychological_focus", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("reality_anchor", ANALYSIS_SCHEMA_V6["required"])
         self.assertEqual(EDITOR_SCHEMA_V6["required"], ["final_text"])
 
     def test_analysis_prompt_contains_route_positions_and_no_timeline_rule(self):
@@ -196,7 +204,7 @@ class PromptTests(unittest.TestCase):
         for position in ROUTE_CONFIG_V6["initiative"]["positions"]:
             self.assertIn(position, prompt)
         self.assertIn("не является временной последовательностью", prompt)
-        self.assertIn("mixed", prompt)
+        self.assertIn("contradictory", prompt)
 
     def test_editor_prompt_contains_verified_analysis_and_style_example(self):
         prompt = build_editor_prompt_v6(
@@ -336,6 +344,18 @@ class FinalValidationTests(unittest.TestCase):
             cards=INITIATIVE_CARDS,
         )
         self.assertIn("unsupported_story", issues)
+
+    def test_rejects_pseudo_psychological_diagnosis(self):
+        text = CHOICE_FINAL.replace(
+            "Карты не выбирают вместо вас",
+            "У вас тревожная привязанность. Карты не выбирают вместо вас",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+        )
+        self.assertIn("pseudo_psychology", issues)
 
     def test_cleaning_removes_only_markdown_stars(self):
         source = "**Тёплый** контакт и *ясный* вопрос: 2 * 3."
