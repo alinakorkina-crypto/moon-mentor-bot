@@ -1,5 +1,7 @@
 """Two-route control preview for Reading Engine v6."""
 
+import json
+
 from ai_reader_v6 import ask_gemini_analysis_v6, ask_gemini_editor_v6
 from reading_engine_v6 import count_words_v6, generate_reading_v6, split_paragraphs_v6
 
@@ -76,7 +78,7 @@ def diagnostic(label: str, value) -> str:
 
 
 def main() -> None:
-    print("\n===== READING ENGINE V6.1: PSYCHOLOGICAL ROUTED PREVIEW =====\n")
+    print("\n===== READING ENGINE V6.2: EVIDENCE-LOCKED PREVIEW =====\n")
     for index, scenario in enumerate(SCENARIOS, start=1):
         calls = {"analysis": 0, "editor": 0}
 
@@ -108,8 +110,18 @@ def main() -> None:
         print(diagnostic("Аналитик", result.get("analysis_diagnostics")))
         print(diagnostic("Редактор", result.get("editor_diagnostics")))
         if result.get("rejected_text"):
+            analysis = result.get("analysis") or {}
+            evidence_view = {
+                "focus_code": analysis.get("focus_code"),
+                "supported_observations": analysis.get("supported_observations"),
+            }
+            print("\nПроверенный контур аналитика:\n")
+            print(json.dumps(evidence_view, ensure_ascii=False, indent=2))
             print("\nОтклонённый AI-текст:\n")
             print(result["rejected_text"])
+        if result.get("rejected_analysis"):
+            print("\nОтклонённый анализ:\n")
+            print(json.dumps(result["rejected_analysis"], ensure_ascii=False, indent=2))
         print(f"AI-запросов: {calls['analysis'] + calls['editor']}")
         print(f"\n===== END TEST {index} =====\n")
 
