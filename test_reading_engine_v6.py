@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import unittest
 
 from reading_engine_v6 import (
@@ -66,98 +67,24 @@ CHOICE_CARDS = [
 
 
 def initiative_analysis():
-    positions = ROUTE_CONFIG_V6["initiative"]["positions"]
     return {
         "question_route": "initiative",
-        "facts_used": ["первым на контакт"],
-        "unknowns_kept_open": ["намерения человека", "срок возможного контакта"],
-        "card_roles": [
-            {
-                "card": "Колесница",
-                "position": positions[0],
-                "contribution": "Поддерживает саму возможность движения и проявления.",
-            },
-            {
-                "card": "Башня",
-                "position": positions[1],
-                "contribution": "Резко ограничивает чтение импульса как устойчивого шага.",
-            },
-            {
-                "card": "Звезда",
-                "position": positions[2],
-                "contribution": "Сохраняет перспективу открытой, но не подтверждённой.",
-            },
-        ],
-        "central_pattern": (
-            "Колесница поддерживает импульс, Башня нарушает его устойчивость, а "
-            "Звезда оставляет возможность открытой без обещания результата."
-        ),
+        "question_quotes": ["думаю постоянно", "первым на контакт"],
+        "interaction_code": "restriction",
         "focus_code": "evidence_threshold",
-        "supported_observations": [
-            {
-                "statement": "Вопрос отделяет ожидание от самостоятельного первого шага.",
-                "source_type": "question",
-                "source_refs": ["думаю постоянно", "первым на контакт"],
-            },
-            {
-                "statement": "Движение встречает противоречие, а возможность остаётся открытой.",
-                "source_type": "cards",
-                "source_refs": ["Колесница", "Башня", "Звезда"],
-            },
-        ],
-        "reality_anchor": "Фактом будет только самостоятельное продолжение общения.",
-        "symbolic_tendency": "contradictory",
-        "direct_answer": "Символическая картина смешанная: возможность есть, подтверждения нет.",
-        "observable_criterion": "Самостоятельное содержательное продолжение разговора.",
-        "reflection_question": "Какое действие вы сочтёте настоящей инициативой?",
+        "tendency_code": "contradictory",
+        "criterion_code": "independent_contact",
     }
 
 
 def choice_analysis():
-    positions = ROUTE_CONFIG_V6["personal_choice"]["positions"]
     return {
         "question_route": "personal_choice",
-        "facts_used": ["тепло общаемся", "надолго пропадает"],
-        "unknowns_kept_open": ["причины исчезновений", "будущее контакта"],
-        "card_roles": [
-            {
-                "card": "Солнце",
-                "position": positions[0],
-                "contribution": "Показывает ценность тёплых эпизодов общения.",
-            },
-            {
-                "card": "Отшельник",
-                "position": positions[1],
-                "contribution": "Подчёркивает цену дистанции и долгих пауз.",
-            },
-            {
-                "card": "Умеренность",
-                "position": positions[2],
-                "contribution": "Возвращает выбор к подходящей пользователю мере участия.",
-            },
-        ],
-        "central_pattern": (
-            "Солнце и Отшельник создают контраст тепла и дистанции, а Умеренность "
-            "переводит его в вопрос о приемлемой мере участия."
-        ),
+        "question_quotes": ["тепло общаемся", "надолго пропадает"],
+        "interaction_code": "contrast",
         "focus_code": "reciprocity",
-        "supported_observations": [
-            {
-                "statement": "Тёплое общение сочетается с длительными исчезновениями.",
-                "source_type": "question",
-                "source_refs": ["тепло общаемся", "надолго пропадает"],
-            },
-            {
-                "statement": "Тепло и дистанция связываются через подходящую меру участия.",
-                "source_type": "cards",
-                "source_refs": ["Солнце", "Отшельник", "Умеренность"],
-            },
-        ],
-        "reality_anchor": "Взаимность инициативы и фактическая длительность пауз.",
-        "symbolic_tendency": "conditional",
-        "direct_answer": "Решение зависит от того, подходит ли пользователю такой ритм.",
-        "observable_criterion": "Взаимность инициативы после пауз.",
-        "reflection_question": "Какой ритм общения остаётся для вас комфортным?",
+        "tendency_code": "conditional",
+        "criterion_code": "mutual_initiative",
     }
 
 
@@ -218,10 +145,13 @@ class RoutingTests(unittest.TestCase):
 
 class PromptTests(unittest.TestCase):
     def test_schemas_require_complete_payloads(self):
-        self.assertIn("card_roles", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("question_quotes", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("interaction_code", ANALYSIS_SCHEMA_V6["required"])
         self.assertIn("focus_code", ANALYSIS_SCHEMA_V6["required"])
-        self.assertIn("supported_observations", ANALYSIS_SCHEMA_V6["required"])
-        self.assertIn("reality_anchor", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("tendency_code", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("criterion_code", ANALYSIS_SCHEMA_V6["required"])
+        self.assertNotIn("central_pattern", ANALYSIS_SCHEMA_V6["required"])
+        self.assertNotIn("card_roles", ANALYSIS_SCHEMA_V6["required"])
         self.assertEqual(EDITOR_SCHEMA_V6["required"], ["final_text"])
 
     def test_analysis_prompt_contains_route_positions_and_no_timeline_rule(self):
@@ -241,13 +171,25 @@ class PromptTests(unittest.TestCase):
             "initiative",
             initiative_analysis(),
         )
-        self.assertIn("Проверенный анализ", prompt)
+        self.assertIn("Проверенный план", prompt)
         self.assertIn("Эталон тона", prompt)
         self.assertIn("Колесница", prompt)
-        self.assertIn("Единственный разрешённый психологический фокус", prompt)
+        self.assertIn("evidence_threshold", prompt)
+        self.assertIn("independent_contact", prompt)
+        for prepared_card in prepare_cards_v6(INITIATIVE_CARDS, "initiative"):
+            self.assertIn(prepared_card["position"], prompt)
+            self.assertIn(prepared_card["meaning"], prompt)
+        self.assertIn(
+            "одна тема заметно ограничивает или ослабляет другую",
+            prompt,
+        )
+        self.assertIn(
+            "самостоятельное сообщение или звонок без предварительного шага пользователя",
+            prompt,
+        )
 
     def test_system_prompts_split_analysis_from_prose(self):
-        self.assertIn("Не пишите финальный текст", ANALYSIS_SYSTEM_V6)
+        self.assertIn("Не пишите толкование", ANALYSIS_SYSTEM_V6)
         self.assertIn("ровно 3 коротких абзаца", EDITOR_SYSTEM_V6)
 
     def test_card_positions_are_route_specific(self):
@@ -266,6 +208,26 @@ class JsonTransportTests(unittest.TestCase):
         payload, issues = parse_json_v6('{"answer": "not finished')
         self.assertIsNone(payload)
         self.assertEqual(issues, ["truncated_json"])
+
+
+class AiReaderConfigTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = Path(__file__).with_name("ai_reader_v6.py").read_text(
+            encoding="utf-8"
+        )
+
+    def test_both_passes_use_low_thinking_and_4096_output_limit(self):
+        self.assertEqual(
+            self.source.count('ThinkingConfig(thinking_level="low")'),
+            2,
+        )
+        self.assertEqual(self.source.count("max_output_tokens=4096"), 2)
+
+    def test_gemini_3_config_omits_legacy_sampling_controls(self):
+        for setting in ("temperature=", "top_p=", "candidate_count=", "seed="):
+            with self.subTest(setting=setting):
+                self.assertNotIn(setting, self.source)
 
 
 class AnalysisValidationTests(unittest.TestCase):
@@ -291,21 +253,20 @@ class AnalysisValidationTests(unittest.TestCase):
             [],
         )
 
-    def test_rejects_unsupported_fact(self):
+    def test_rejects_unsupported_question_quote(self):
         payload = initiative_analysis()
-        payload["facts_used"] = ["между ними произошла ссора"]
+        payload["question_quotes"] = ["между ними произошла ссора"]
         issues = validate_analysis_v6(
             payload,
             question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
-        self.assertIn("unsupported_fact", issues)
+        self.assertIn("unsupported_question_quote", issues)
 
-    def test_rejects_wrong_tendency_and_missing_card(self):
+    def test_rejects_wrong_tendency(self):
         payload = initiative_analysis()
-        payload["symbolic_tendency"] = "definitely_yes"
-        payload["central_pattern"] = "Колесница даёт движение, а Башня мешает."
+        payload["tendency_code"] = "definitely_yes"
         issues = validate_analysis_v6(
             payload,
             question=INITIATIVE_QUESTION,
@@ -313,21 +274,17 @@ class AnalysisValidationTests(unittest.TestCase):
             route="initiative",
         )
         self.assertIn("invalid_tendency", issues)
-        self.assertIn("analysis_missing_cards:Звезда", issues)
 
-    def test_rejects_changed_position_order(self):
+    def test_rejects_unexpected_free_text_field(self):
         payload = initiative_analysis()
-        payload["card_roles"][0]["position"], payload["card_roles"][1]["position"] = (
-            payload["card_roles"][1]["position"],
-            payload["card_roles"][0]["position"],
-        )
+        payload["central_pattern"] = "Внутренний конфликт и идеализация."
         issues = validate_analysis_v6(
             payload,
             question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
-        self.assertIn("card_positions_mismatch", issues)
+        self.assertIn("unexpected_analysis_fields:central_pattern", issues)
 
     def test_rejects_unknown_focus_code(self):
         payload = initiative_analysis()
@@ -340,31 +297,40 @@ class AnalysisValidationTests(unittest.TestCase):
         )
         self.assertIn("invalid_focus_code", issues)
 
-    def test_rejects_observation_without_real_source(self):
+    def test_rejects_quote_without_real_source(self):
         payload = initiative_analysis()
-        payload["supported_observations"][0]["source_refs"] = ["между ними пауза"]
+        payload["question_quotes"] = ["между ними пауза"]
         issues = validate_analysis_v6(
             payload,
             question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
-        self.assertIn("unsupported_observation_source", issues)
+        self.assertIn("unsupported_question_quote", issues)
 
-    def test_rejects_invented_psychology_in_analysis(self):
+    def test_rejects_invalid_interaction_and_criterion_codes(self):
         payload = initiative_analysis()
-        payload["supported_observations"][0]["statement"] = (
-            "Ожидание связано с идеализированным образом человека."
-        )
+        payload["interaction_code"] = "inner_conflict"
+        payload["criterion_code"] = "wait_for_a_sign"
         issues = validate_analysis_v6(
             payload,
             question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
-        self.assertTrue(
-            any(issue.startswith("analysis_unsupported_inference:") for issue in issues)
+        self.assertIn("invalid_interaction_code", issues)
+        self.assertIn("invalid_criterion_code", issues)
+
+    def test_rejects_criterion_from_another_route(self):
+        payload = initiative_analysis()
+        payload["criterion_code"] = "mutual_initiative"
+        issues = validate_analysis_v6(
+            payload,
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            route="initiative",
         )
+        self.assertIn("invalid_criterion_code", issues)
 
 
 class FinalValidationTests(unittest.TestCase):
