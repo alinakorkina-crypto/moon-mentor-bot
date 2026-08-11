@@ -1,0 +1,638 @@
+"""Reading Engine v6 MVP for initiative and personal-choice questions."""
+
+import json
+import re
+from typing import Any, Callable
+
+
+ROUTE_CONFIG_V6 = {
+    "initiative": {
+        "positions": (
+            "Что поддерживает возможность самостоятельной инициативы",
+            "Что противоречит этой возможности или ограничивает её",
+            "Как третий ракурс меняет общую символическую тенденцию",
+        ),
+        "tendencies": ("rather_yes", "rather_no", "mixed", "open"),
+        "answer_rule": (
+            "Дайте символическую тенденцию: скорее да, скорее нет, смешанная картина "
+            "или вопрос остаётся открытым. Не называйте сроки и не утверждайте будущее."
+        ),
+    },
+    "personal_choice": {
+        "positions": (
+            "Что делает рассматриваемый вариант привлекательным или значимым",
+            "Главное противоречие, цена или ограничение этого варианта",
+            "Какой критерий помогает пользователю определить собственную позицию",
+        ),
+        "tendencies": ("leans_yes", "leans_no", "conditional", "open"),
+        "answer_rule": (
+            "Не принимайте решение за пользователя. Покажите, склоняется ли символический "
+            "рисунок к варианту, отдаляется от него или делает решение условным."
+        ),
+    },
+}
+
+
+ANALYSIS_SYSTEM_V6 = """
+Вы — аналитик Moon Mentor. Таро используется как символический язык, а не как
+достоверное предсказание или чтение мыслей другого человека.
+
+Верните строго JSON по заданной схеме. Не пишите финальный текст.
+
+Требования:
+- facts_used: только короткие точные цитаты из вопроса;
+- unknowns_kept_open: мысли, чувства, мотивы, сроки, будущие действия и другие
+  обстоятельства, которых нет в вопросе;
+- card_roles: каждая карта ровно один раз, с переданной позицией;
+- позиции являются аналитическими ракурсами, а не последовательностью событий;
+- central_pattern связывает все карты через противоречие, усиление или коррекцию;
+- одна яркая карта не отменяет две остальные;
+- symbolic_tendency выбирается только из значений, разрешённых для маршрута;
+- direct_answer формулирует прямую символическую тенденцию, но не факт будущего;
+- observable_criterion проверяется по реальности;
+- reflection_question — один точный нейтральный вопрос.
+""".strip()
+
+
+EDITOR_SYSTEM_V6 = """
+Вы — редактор Moon Mentor. Получите вопрос, карты, маршрут, проверенный анализ и
+эталон нужного тона. Верните строго JSON с полем final_text.
+
+final_text:
+- ровно 3 коротких абзаца, 110–150 слов;
+- первый абзац сразу даёт символическую тенденцию: «скорее да», «скорее нет»,
+  «смешанная картина» или «решение зависит от...»;
+- достаточно один раз обозначить, что речь идёт о символике расклада;
+- второй абзац называет все карты и объясняет их взаимодействие, не перечисляя
+  три словарных значения и не превращая порядок карт в хронологию событий;
+- третий абзац содержит один наблюдаемый критерий и один вопрос в конце;
+- допустима живая условная версия: «это может указывать», «в символике расклада»;
+- нельзя утверждать чужие мысли, чувства, мотивы, намерения, сроки или будущие
+  действия как факты;
+- нельзя придумывать произошедшие события и скрытые причины;
+- нельзя давать команды и манипулятивные советы, как спровоцировать другого;
+- без приветствия, заголовков, списков, Markdown, канцелярита, эзотерического
+  пафоса и повторяющихся предостережений.
+""".strip()
+
+
+ANALYSIS_SCHEMA_V6 = {
+    "type": "object",
+    "properties": {
+        "question_route": {"type": "string"},
+        "facts_used": {"type": "array", "items": {"type": "string"}},
+        "unknowns_kept_open": {"type": "array", "items": {"type": "string"}},
+        "card_roles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "card": {"type": "string"},
+                    "position": {"type": "string"},
+                    "contribution": {"type": "string"},
+                },
+                "required": ["card", "position", "contribution"],
+            },
+        },
+        "central_pattern": {"type": "string"},
+        "symbolic_tendency": {"type": "string"},
+        "direct_answer": {"type": "string"},
+        "observable_criterion": {"type": "string"},
+        "reflection_question": {"type": "string"},
+    },
+    "required": [
+        "question_route",
+        "facts_used",
+        "unknowns_kept_open",
+        "card_roles",
+        "central_pattern",
+        "symbolic_tendency",
+        "direct_answer",
+        "observable_criterion",
+        "reflection_question",
+    ],
+}
+
+
+EDITOR_SCHEMA_V6 = {
+    "type": "object",
+    "properties": {"final_text": {"type": "string"}},
+    "required": ["final_text"],
+}
+
+
+STYLE_EXAMPLES_V6 = {
+    "initiative": """
+Вопрос: «Проявится ли человек сам?»
+Карты: Маг — Повешенный — Суд
+
+По символике сочетания — скорее возможность инициативы есть, но она не выглядит
+прямой и быстрой. Импульс к действию сталкивается с заметной задержкой, поэтому
+однозначного обещания первого шага здесь нет.
+
+Маг усиливает тему проявления, Повешенный ограничивает её свободное развитие, а
+Суд возвращает к незавершённой теме. Вместе карты показывают не готовое событие,
+а противоречие между возможностью действовать и сохраняющейся паузой.
+
+Наблюдаемым подтверждением станет самостоятельное продолжение разговора, а не
+случайная реакция на чужую инициативу. Какое действие вы сочтёте настоящим шагом?
+""".strip(),
+    "personal_choice": """
+Вопрос: «Стоит ли принимать предложение о новой работе?»
+Карты: Колесо Фортуны — Луна — Император
+
+По символике расклада решение выглядит условным: возможность перемен заметна,
+но её ценность зависит от того, удастся ли сделать условия достаточно ясными.
+
+Колесо Фортуны подчёркивает привлекательность нового поворота, Луна добавляет
+неопределённость, а Император связывает выбор с конкретной структурой роли.
+Поэтому главный вопрос не в самой перемене, а в том, на что она будет опираться.
+
+Критерием станет ясность обязанностей, полномочий и ожидаемых результатов. Какая
+информация необходима вам, чтобы принять это решение без догадок?
+""".strip(),
+}
+
+
+HIGH_RISK_PATTERNS_V6 = (
+    r"\b(?:он|она|человек)\s+(?:точно\s+|обязательно\s+|скоро\s+)?"
+    r"(?:не\s+)?(?:выйдет|напишет|позвонит|верн[её]тся|проявится)\b",
+    r"\b(?:он|она)\s+(?:хочет|боится|чувствует|думает|решил[аи]?|планирует)\b",
+    r"\b(?:вам|тебе)\s+(?:нужно|необходимо|следует|стоит)\b",
+    r"\b(?:ждите|напишите|позвоните|прекратите|продолжайте|соглашайтесь)\b",
+)
+
+
+UNSUPPORTED_STORY_PATTERNS_V6 = (
+    r"\bв ближайшее время\b",
+    r"\bвнезапн\w*\b",
+    r"\bнеожиданн\w*\b",
+    r"\bразруш\w* привычн\w* формат\w*\b",
+    r"\bэнерги\w* взаимодействи\w*\b",
+    r"\bкрасив\w* дистанци\w*\b",
+    r"\bдолгосрочн\w* надежд\w*\b",
+)
+
+
+def normalize_text_v6(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower().replace("ё", "е"))
+
+
+def infer_question_route_v6(question: str) -> str:
+    q = normalize_text_v6(question)
+    initiative_patterns = (
+        r"\bвыйд\w*(?:\s+\w+){0,3}\s+на контакт\b",
+        r"\bперв\w*\s+на контакт\b",
+        r"\bнапиш\w*\b",
+        r"\bпозвон\w*\b",
+        r"\bпрояв\w*\b",
+        r"\bсдела\w*(?:\s+\w+){0,3}\s+перв\w+\s+шаг\b",
+        r"\bверн\w*\b",
+        r"\bвозобнов\w*\s+общен\w*\b",
+    )
+    if any(re.search(pattern, q) for pattern in initiative_patterns):
+        return "initiative"
+
+    choice_markers = (
+        "стоит ли",
+        "соглашаться",
+        "продолжать ли",
+        "принимать ли",
+        "уходить ли",
+        "выбирать ли",
+        "что выбрать",
+    )
+    if any(marker in q for marker in choice_markers):
+        return "personal_choice"
+    return "unsupported"
+
+
+def prepare_cards_v6(
+    cards: list[dict[str, Any]],
+    route: str,
+    topic: str = "general",
+) -> list[dict[str, str]]:
+    positions = ROUTE_CONFIG_V6[route]["positions"]
+    prepared = []
+    for index, card in enumerate(cards):
+        prepared.append(
+            {
+                "name": card["name"],
+                "position": (
+                    positions[index]
+                    if index < len(positions)
+                    else f"Дополнительный ракурс {index + 1}"
+                ),
+                "meaning": card.get(topic) or card.get("general") or "",
+            }
+        )
+    return prepared
+
+
+def build_analysis_prompt_v6(
+    question: str,
+    cards: list[dict[str, Any]],
+    route: str,
+    topic: str = "general",
+) -> str:
+    config = ROUTE_CONFIG_V6[route]
+    prepared = prepare_cards_v6(cards, route, topic)
+    card_block = "\n".join(
+        f"- {item['position']}: {item['name']} — {item['meaning']}"
+        for item in prepared
+    )
+    tendencies = ", ".join(config["tendencies"])
+    return f"""
+Маршрут вопроса: {route}
+Вопрос пользователя:
+{question}
+
+Карты, аналитические позиции и допустимые символические темы:
+{card_block}
+
+Допустимые symbolic_tendency: {tendencies}
+Правило прямого ответа: {config['answer_rule']}
+
+Порядок карт не является временной последовательностью. Не превращайте позиции
+в рассказ «сначала это случилось, потом произошло другое».
+Верните только JSON.
+""".strip()
+
+
+def build_editor_prompt_v6(
+    question: str,
+    cards: list[dict[str, Any]],
+    route: str,
+    analysis: dict[str, Any],
+) -> str:
+    return f"""
+Маршрут: {route}
+Вопрос:
+{question}
+
+Карты:
+{" — ".join(card["name"] for card in cards)}
+
+Проверенный анализ:
+{json.dumps(analysis, ensure_ascii=False, indent=2)}
+
+Эталон тона и логики для этого маршрута:
+{STYLE_EXAMPLES_V6[route]}
+
+Не копируйте факты и карты из эталона. Напишите ответ только для текущего вопроса.
+Верните только JSON.
+""".strip()
+
+
+def normalize_json_transport_v6(raw: str) -> str:
+    text = raw.lstrip("\ufeff").replace("\u00a0", " ").strip()
+    opening = re.match(r"^\u0060\u0060\u0060(?:json)?\s*", text, re.IGNORECASE)
+    if opening:
+        text = text[opening.end():]
+        text = re.sub(r"\s*\u0060\u0060\u0060\s*$", "", text)
+    return text.strip()
+
+
+def looks_truncated_json_v6(text: str) -> bool:
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    if stripped.endswith((",", ":", "{", "[")):
+        return True
+    in_string = False
+    escaped = False
+    braces = brackets = 0
+    for char in stripped:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            braces += 1
+        elif char == "}":
+            braces -= 1
+        elif char == "[":
+            brackets += 1
+        elif char == "]":
+            brackets -= 1
+    return in_string or braces > 0 or brackets > 0
+
+
+def parse_json_v6(raw: str | None) -> tuple[dict[str, Any] | None, list[str]]:
+    if not raw:
+        return None, ["empty_answer"]
+    normalized = normalize_json_transport_v6(raw)
+    try:
+        payload = json.loads(normalized)
+    except json.JSONDecodeError:
+        return None, [
+            "truncated_json" if looks_truncated_json_v6(normalized) else "invalid_json"
+        ]
+    if not isinstance(payload, dict):
+        return None, ["payload_not_object"]
+    return payload, []
+
+
+def unpack_reply_v6(reply: Any) -> tuple[str | None, dict[str, Any]]:
+    if isinstance(reply, str) or reply is None:
+        return reply, {"finish_reason": None, "usage": None}
+    if isinstance(reply, dict):
+        text = reply.get("text")
+        return (
+            text if isinstance(text, str) else None,
+            {
+                "finish_reason": reply.get("finish_reason"),
+                "usage": reply.get("usage"),
+            },
+        )
+    return None, {"finish_reason": None, "usage": None}
+
+
+def word_form_pattern_v6(word: str) -> str:
+    escaped = re.escape(word)
+    lower = word.lower()
+    endings = (
+        ("ая", ("ая", "ой", "ую", "ою")),
+        ("яя", ("яя", "ей", "юю", "ею")),
+        ("ый", ("ый", "ого", "ому", "ым", "ом")),
+        ("ий", ("ий", "его", "ему", "им", "ем")),
+        ("а", ("а", "ы", "е", "у", "ой", "ою")),
+        ("я", ("я", "и", "е", "ю", "ей", "ею")),
+        ("ь", ("ь", "и", "ью")),
+        ("е", ("е", "я", "а", "ю", "у", "ем", "ом")),
+        ("о", ("о", "а", "у", "ом", "е")),
+        ("й", ("й", "я", "ю", "ем", "е")),
+    )
+    for ending, forms in endings:
+        if lower.endswith(ending) and len(word) > len(ending) + 1:
+            return re.escape(word[:-len(ending)]) + "(?:" + "|".join(forms) + ")"
+    return escaped + "(?:а|у|ом|е|ы|ов|ам|ами|ах)?"
+
+
+def card_pattern_v6(name: str) -> str:
+    words = re.findall(r"[A-Za-zА-Яа-яЁё0-9]+", name)
+    return rf"(?<!\w){r'[\s–—-]+'.join(word_form_pattern_v6(word) for word in words)}(?!\w)"
+
+
+def missing_cards_v6(text: str, cards: list[dict[str, Any]]) -> list[str]:
+    return [
+        card["name"]
+        for card in cards
+        if not re.search(card_pattern_v6(card["name"]), text, re.IGNORECASE)
+    ]
+
+
+def validate_analysis_v6(
+    payload: dict[str, Any],
+    *,
+    question: str,
+    cards: list[dict[str, Any]],
+    route: str,
+) -> list[str]:
+    issues: list[str] = []
+    string_fields = (
+        "question_route",
+        "central_pattern",
+        "symbolic_tendency",
+        "direct_answer",
+        "observable_criterion",
+        "reflection_question",
+    )
+    for field in string_fields:
+        if not isinstance(payload.get(field), str) or not payload[field].strip():
+            issues.append(f"missing:{field}")
+
+    if payload.get("question_route") != route:
+        issues.append("route_mismatch")
+    if payload.get("symbolic_tendency") not in ROUTE_CONFIG_V6[route]["tendencies"]:
+        issues.append("invalid_tendency")
+
+    facts = payload.get("facts_used")
+    if not isinstance(facts, list) or not facts:
+        issues.append("missing:facts_used")
+    else:
+        normalized_question = normalize_text_v6(question)
+        if any(
+            not isinstance(fact, str)
+            or not fact.strip()
+            or normalize_text_v6(fact) not in normalized_question
+            for fact in facts
+        ):
+            issues.append("unsupported_fact")
+
+    unknowns = payload.get("unknowns_kept_open")
+    if not isinstance(unknowns, list) or not unknowns:
+        issues.append("missing:unknowns_kept_open")
+
+    roles = payload.get("card_roles")
+    expected_names = [card["name"] for card in cards]
+    expected_positions = list(ROUTE_CONFIG_V6[route]["positions"][:len(cards)])
+    if not isinstance(roles, list):
+        issues.append("missing:card_roles")
+    else:
+        role_names = [
+            item.get("card") for item in roles if isinstance(item, dict)
+        ]
+        role_positions = [
+            item.get("position") for item in roles if isinstance(item, dict)
+        ]
+        if len(role_names) != len(expected_names) or set(role_names) != set(expected_names):
+            issues.append("card_roles_mismatch")
+        if role_positions != expected_positions:
+            issues.append("card_positions_mismatch")
+        if any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("contribution"), str)
+            or not item["contribution"].strip()
+            for item in roles
+        ):
+            issues.append("invalid_card_role")
+
+    pattern = payload.get("central_pattern")
+    if isinstance(pattern, str):
+        missing = missing_cards_v6(pattern, cards)
+        if missing:
+            issues.append("analysis_missing_cards:" + "|".join(missing))
+
+    reflection = payload.get("reflection_question")
+    if isinstance(reflection, str) and reflection.strip() and not reflection.rstrip().endswith("?"):
+        issues.append("reflection_not_question")
+    return list(dict.fromkeys(issues))
+
+
+def count_words_v6(text: str) -> int:
+    return len(re.findall(r"[A-Za-zА-Яа-яЁё0-9]+(?:[-–][A-Za-zА-Яа-яЁё0-9]+)?", text))
+
+
+def validate_final_v6(
+    payload: dict[str, Any],
+    *,
+    question: str,
+    cards: list[dict[str, Any]],
+) -> list[str]:
+    text = payload.get("final_text")
+    if not isinstance(text, str) or not text.strip():
+        return ["missing:final_text"]
+    issues: list[str] = []
+    paragraphs = [part.strip() for part in text.split("\n\n") if part.strip()]
+    if len(paragraphs) != 3:
+        issues.append("paragraph_count")
+    words = count_words_v6(text)
+    if words < 100 or words > 170:
+        issues.append(f"word_count:{words}")
+    if not text.rstrip().endswith("?"):
+        issues.append("missing_final_question")
+    missing = missing_cards_v6(text, cards)
+    if missing:
+        issues.append("final_missing_cards:" + "|".join(missing))
+    if not re.search(
+        r"\b(?:по символике|в символике|расклад скорее|сочетание скорее)\b",
+        paragraphs[0] if paragraphs else text,
+        re.IGNORECASE,
+    ):
+        issues.append("missing_symbolic_frame")
+    if any(re.search(pattern, text, re.IGNORECASE) for pattern in HIGH_RISK_PATTERNS_V6):
+        issues.append("high_risk_claim")
+    normalized_question = normalize_text_v6(question)
+    for pattern in UNSUPPORTED_STORY_PATTERNS_V6:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match and normalize_text_v6(match.group(0)) not in normalized_question:
+            issues.append("unsupported_story")
+            break
+    if re.match(r"\s*(?:привет|здравствуйте|приветствую)\b", text, re.IGNORECASE):
+        issues.append("greeting")
+    return list(dict.fromkeys(issues))
+
+
+def clean_stars_v6(text: str) -> str:
+    cleaned = re.sub(r"\*\*(?=\S)([^*\n]*?\S)\*\*", r"\1", text)
+    return re.sub(r"(?<!\*)\*(?=\S)([^*\n]*?\S)\*(?!\*)", r"\1", cleaned).strip()
+
+
+def fallback_v6(question: str, cards: list[dict[str, Any]], route: str) -> str:
+    names = [card["name"] for card in cards]
+    if route == "initiative" and len(names) >= 3:
+        return (
+            "По символике сочетания ясного подтверждения самостоятельного первого шага "
+            "сейчас нет: возможность инициативы присутствует, но встречает заметное "
+            "противоречие и остаётся открытой, а не оформленной в действие.\n\n"
+            f"{names[0]} поддерживает тему движения, {names[1]} мешает читать этот импульс "
+            f"как прямой и устойчивый, а {names[2]} сохраняет возможность, не превращая "
+            "её в обещание контакта. Вместе карты дают смешанную, а не однозначную картину.\n\n"
+            "Наблюдаемым подтверждением станет самостоятельное продолжение общения без "
+            "вашего предварительного шага. Какое проявление вы сами сочтёте настоящей "
+            "инициативой, а не случайным сигналом?"
+        )
+    if route == "personal_choice" and len(names) >= 3:
+        return (
+            "По символике расклада решение зависит от того, насколько рассматриваемый "
+            "вариант соответствует вашим собственным условиям, а не только от его "
+            "привлекательной стороны.\n\n"
+            f"{names[0]} показывает ценность варианта, {names[1]} добавляет его главное "
+            f"противоречие, а {names[2]} возвращает выбор к критерию, который можно "
+            "проверить в реальности. Карты не выбирают вместо вас, но делают цену решения "
+            "более заметной.\n\n"
+            "Ориентиром станет то, выполняется ли важное для вас условие выбора. Какое "
+            "условие должно быть соблюдено, чтобы этот вариант действительно вам подходил?"
+        )
+    return (
+        "По символике расклада вопрос остаётся открытым. Карты показывают несколько "
+        "ракурсов, но не дают основания выдавать один из них за установленный факт.\n\n"
+        "Общий рисунок стоит сопоставить с тем, что уже известно из реальной ситуации.\n\n"
+        "Какой проверяемой информации сейчас не хватает для более ясного решения?"
+    )
+
+
+def decorate_transport_issues_v6(
+    issues: list[str],
+    diagnostics: dict[str, Any],
+) -> list[str]:
+    reason = str(diagnostics.get("finish_reason") or "").upper()
+    return [
+        "truncated_json:max_tokens"
+        if issue == "truncated_json" and "MAX_TOKENS" in reason
+        else issue
+        for issue in issues
+    ]
+
+
+def generate_reading_v6(
+    *,
+    question: str,
+    cards: list[dict[str, Any]],
+    analysis_call: Callable[[str], Any],
+    editor_call: Callable[[str], Any],
+    topic: str = "general",
+) -> dict[str, Any]:
+    route = infer_question_route_v6(question)
+    if route not in ROUTE_CONFIG_V6:
+        return {
+            "text": fallback_v6(question, cards, route),
+            "route": route,
+            "used_fallback": True,
+            "stage": "routing",
+            "issues": ["unsupported_route"],
+            "ai_requests": 0,
+            "analysis_diagnostics": None,
+            "editor_diagnostics": None,
+        }
+
+    analysis_reply = analysis_call(build_analysis_prompt_v6(question, cards, route, topic))
+    analysis_raw, analysis_diagnostics = unpack_reply_v6(analysis_reply)
+    analysis, issues = parse_json_v6(analysis_raw)
+    issues = decorate_transport_issues_v6(issues, analysis_diagnostics)
+    if analysis is not None:
+        issues.extend(
+            validate_analysis_v6(
+                analysis, question=question, cards=cards, route=route
+            )
+        )
+    if analysis is None or issues:
+        return {
+            "text": fallback_v6(question, cards, route),
+            "route": route,
+            "used_fallback": True,
+            "stage": "analysis",
+            "issues": list(dict.fromkeys(issues)),
+            "ai_requests": 1,
+            "analysis_diagnostics": analysis_diagnostics,
+            "editor_diagnostics": None,
+        }
+
+    editor_reply = editor_call(build_editor_prompt_v6(question, cards, route, analysis))
+    editor_raw, editor_diagnostics = unpack_reply_v6(editor_reply)
+    final_payload, final_issues = parse_json_v6(editor_raw)
+    final_issues = decorate_transport_issues_v6(final_issues, editor_diagnostics)
+    if final_payload is not None:
+        final_issues.extend(
+            validate_final_v6(final_payload, question=question, cards=cards)
+        )
+    if final_payload is None or final_issues:
+        return {
+            "text": fallback_v6(question, cards, route),
+            "route": route,
+            "used_fallback": True,
+            "stage": "editor",
+            "issues": list(dict.fromkeys(final_issues)),
+            "ai_requests": 2,
+            "analysis_diagnostics": analysis_diagnostics,
+            "editor_diagnostics": editor_diagnostics,
+        }
+
+    return {
+        "text": clean_stars_v6(final_payload["final_text"]),
+        "route": route,
+        "used_fallback": False,
+        "stage": "complete",
+        "issues": [],
+        "ai_requests": 2,
+        "analysis": analysis,
+        "analysis_diagnostics": analysis_diagnostics,
+        "editor_diagnostics": editor_diagnostics,
+    }
