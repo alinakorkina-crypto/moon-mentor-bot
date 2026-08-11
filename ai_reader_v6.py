@@ -17,10 +17,7 @@ MODEL_NAME = "gemini-3.5-flash"
 
 ANALYSIS_CONFIG = types.GenerateContentConfig(
     system_instruction=ANALYSIS_SYSTEM_V6,
-    temperature=0.15,
-    top_p=0.75,
-    candidate_count=1,
-    seed=42,
+    thinking_config=types.ThinkingConfig(thinking_level="low"),
     max_output_tokens=4096,
     response_mime_type="application/json",
     response_schema=ANALYSIS_SCHEMA_V6,
@@ -28,10 +25,7 @@ ANALYSIS_CONFIG = types.GenerateContentConfig(
 
 EDITOR_CONFIG = types.GenerateContentConfig(
     system_instruction=EDITOR_SYSTEM_V6,
-    temperature=0.3,
-    top_p=0.85,
-    candidate_count=1,
-    seed=43,
+    thinking_config=types.ThinkingConfig(thinking_level="low"),
     max_output_tokens=4096,
     response_mime_type="application/json",
     response_schema=EDITOR_SCHEMA_V6,
