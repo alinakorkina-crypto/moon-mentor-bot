@@ -87,6 +87,49 @@ ROUTE_CONFIG_V6 = {
             "clear_conditions": "понятные и зафиксированные условия рассматриваемого варианта",
             "concrete_information": "конкретная информация, которой не хватает для решения",
         },
+        "topic_profiles": {
+            "love": {
+                "focus_codes": ("needs_fit", "reciprocity", "boundary", "tradeoff"),
+                "criterion_codes": (
+                    "mutual_initiative",
+                    "consistency",
+                    "boundary_response",
+                ),
+                "editor_rule": (
+                    "Описывайте свойства контакта живым языком: взаимность, устойчивость, "
+                    "инициативу и реакцию на границы. Не переносите в отношения лексику "
+                    "договоров, зафиксированных условий или рассматриваемых вариантов."
+                ),
+            },
+            "career": {
+                "focus_codes": (
+                    "needs_fit",
+                    "tradeoff",
+                    "decision_conditions",
+                    "clarity_requirements",
+                ),
+                "criterion_codes": ("clear_conditions", "concrete_information"),
+                "editor_rule": (
+                    "Связывайте выбор с проверяемой конкретикой роли: обязанностями, "
+                    "полномочиями, подчинением и критериями результата."
+                ),
+            },
+            "general": {
+                "focus_codes": (
+                    "needs_fit",
+                    "boundary",
+                    "tradeoff",
+                    "decision_conditions",
+                    "clarity_requirements",
+                ),
+                "criterion_codes": (
+                    "boundary_response",
+                    "clear_conditions",
+                    "concrete_information",
+                ),
+                "editor_rule": "Сохраняйте нейтральный язык, соответствующий вопросу.",
+            },
+        },
     },
 }
 
@@ -184,7 +227,7 @@ STYLE_EXAMPLES_V6 = {
 случайная реакция. Какое действие вы сочтёте настоящим шагом и сколько готовы
 оставаться в ожидании без него?
 """.strip(),
-    "personal_choice": """
+    "personal_choice_career": """
 Вопрос: «Стоит ли принимать предложение о новой работе?»
 Карты: Колесо Фортуны — Луна — Император
 
@@ -198,6 +241,35 @@ STYLE_EXAMPLES_V6 = {
 Критерием станет ясность обязанностей, полномочий и ожидаемых результатов. Какая
 информация необходима вам, чтобы принять это решение без догадок?
 """.strip(),
+    "personal_choice_love": """
+Вопрос: «Мне хорошо с человеком, но общение держится в основном на моей
+инициативе. Стоит ли продолжать?»
+Карты: Двойка Кубков — Повешенный — Правосудие
+
+По символике расклада решение выглядит условным: ценность контакта заметна, но
+его продолжение стоит оценивать вместе с тем, насколько взаимно поддерживается связь.
+
+Двойка Кубков подчёркивает привлекательность близости, Повешенный добавляет
+зависание и неравномерность, а Правосудие переводит их сочетание в вопрос баланса.
+Вместе карты отделяют приятные моменты от устойчивости самого контакта.
+
+Критерием станет то, возникает ли инициатива с обеих сторон без постоянного
+подталкивания. Какой уровень взаимности необходим вам, чтобы эта связь имела ценность?
+""".strip(),
+    "personal_choice_general": """
+Вопрос: «Стоит ли соглашаться на предложение, если мне пока не хватает информации?»
+Карты: Шут — Луна — Правосудие
+
+По символике расклада решение остаётся условным: новая возможность заметна, но
+её ценность зависит от информации, которую ещё можно проверить.
+
+Шут показывает привлекательность нового шага, Луна подчёркивает недостаток
+ясности, а Правосудие возвращает выбор к понятному критерию. Вместе карты не
+решают за человека, а отделяют интерес к варианту от его реальных условий.
+
+Ориентиром станет конкретный ответ на главный открытый вопрос. Какой информации
+вам не хватает, чтобы оценить этот вариант без догадок?
+""".strip(),
 }
 
 
@@ -207,6 +279,15 @@ HIGH_RISK_PATTERNS_V6 = (
     r"\b(?:он|она)\s+(?:хочет|боится|чувствует|думает|решил[аи]?|планирует)\b",
     r"\b(?:вам|тебе)\s+(?:нужно|необходимо|следует|стоит)\b",
     r"\b(?:ждите|напишите|позвоните|прекратите|продолжайте|соглашайтесь)\b",
+)
+
+
+SAFE_PREDICTION_PREFIX_PATTERNS_V6 = (
+    r"\bне\s+(?:гарантирует|означает|подтверждает|показывает|доказывает)"
+    r"(?:\s+\w+){0,3}\s*,?\s+что(?:\s+\w+){0,3}\s*$",
+    r"\bнет(?:\s+\w+){0,3}\s+основани\w*\s+"
+    r"(?:считать|утверждать|ожидать)\s*,?\s+что(?:\s+\w+){0,3}\s*$",
+    r"\bнельзя\s+(?:считать|утверждать)\s*,?\s+что(?:\s+\w+){0,3}\s*$",
 )
 
 
@@ -220,6 +301,13 @@ UNSUPPORTED_STORY_PATTERNS_V6 = (
     r"\bдолгосрочн\w* надежд\w*\b",
     r"\bнеизбежн\w*\b",
     r"\bбуд\w* (?:чередоваться|повторяться|пропадать|возникать)\b",
+    r"\bперестан\w*\s+приносить\s+дискомфорт\w*\b",
+)
+
+
+LOVE_DOMAIN_LEAK_PATTERNS_V6 = (
+    r"\bзафиксированн\w*\s+услови\w*\b",
+    r"\bрассматриваем\w*\s+вариант\w*\s+общен\w*\b",
 )
 
 
@@ -298,6 +386,33 @@ def normalize_text_v6(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower().replace("ё", "е"))
 
 
+def normalize_topic_v6(topic: str) -> str:
+    normalized = normalize_text_v6(topic)
+    if normalized in {"love", "relationship", "relationships", "отношения"}:
+        return "love"
+    if normalized in {"career", "work", "job", "карьера", "работа"}:
+        return "career"
+    return "general"
+
+
+def route_topic_profile_v6(route: str, topic: str) -> dict[str, Any]:
+    config = ROUTE_CONFIG_V6[route]
+    profiles = config.get("topic_profiles")
+    if not profiles:
+        return {
+            "focus_codes": tuple(config["focuses"]),
+            "criterion_codes": tuple(config["criteria"]),
+            "editor_rule": "",
+        }
+    return profiles[normalize_topic_v6(topic)]
+
+
+def style_example_v6(route: str, topic: str) -> str:
+    if route == "initiative":
+        return STYLE_EXAMPLES_V6["initiative"]
+    return STYLE_EXAMPLES_V6[f"personal_choice_{normalize_topic_v6(topic)}"]
+
+
 def source_corpus_v6(question: str, cards: list[dict[str, Any]]) -> str:
     card_text = " ".join(
         value
@@ -321,6 +436,29 @@ def unsupported_inference_markers_v6(
         for label, pattern in UNSUPPORTED_INFERENCE_PATTERNS_V6
         if re.search(pattern, normalized) and not re.search(pattern, sources)
     ]
+
+
+def has_safe_prediction_prefix_v6(text: str, match_start: int) -> bool:
+    sentence_start = max(
+        text.rfind(".", 0, match_start),
+        text.rfind("!", 0, match_start),
+        text.rfind("?", 0, match_start),
+        text.rfind("\n", 0, match_start),
+    )
+    prefix = text[sentence_start + 1:match_start]
+    return any(
+        re.search(pattern, prefix, re.IGNORECASE)
+        for pattern in SAFE_PREDICTION_PREFIX_PATTERNS_V6
+    )
+
+
+def has_high_risk_claim_v6(text: str) -> bool:
+    for index, pattern in enumerate(HIGH_RISK_PATTERNS_V6):
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            if index < 2 and has_safe_prediction_prefix_v6(text, match.start()):
+                continue
+            return True
+    return False
 
 
 def infer_question_route_v6(question: str) -> str:
@@ -358,6 +496,7 @@ def prepare_cards_v6(
     topic: str = "general",
 ) -> list[dict[str, str]]:
     positions = ROUTE_CONFIG_V6[route]["positions"]
+    normalized_topic = normalize_topic_v6(topic)
     prepared = []
     for index, card in enumerate(cards):
         prepared.append(
@@ -368,7 +507,12 @@ def prepare_cards_v6(
                     if index < len(positions)
                     else f"Дополнительный ракурс {index + 1}"
                 ),
-                "meaning": card.get(topic) or card.get("general") or "",
+                "meaning": (
+                    card.get(topic)
+                    or card.get(normalized_topic)
+                    or card.get("general")
+                    or ""
+                ),
             }
         )
     return prepared
@@ -381,6 +525,7 @@ def build_analysis_prompt_v6(
     topic: str = "general",
 ) -> str:
     config = ROUTE_CONFIG_V6[route]
+    topic_profile = route_topic_profile_v6(route, topic)
     prepared = prepare_cards_v6(cards, route, topic)
     card_block = "\n".join(
         f"- {item['position']}: {item['name']} — {item['meaning']}"
@@ -394,13 +539,16 @@ def build_analysis_prompt_v6(
     focus_options = "\n".join(
         f"- {code}: {description}"
         for code, description in config["focuses"].items()
+        if code in topic_profile["focus_codes"]
     )
     criterion_options = "\n".join(
         f"- {code}: {description}"
         for code, description in config["criteria"].items()
+        if code in topic_profile["criterion_codes"]
     )
     return f"""
 Маршрут вопроса: {route}
+Тема вопроса: {normalize_topic_v6(topic)}
 Вопрос пользователя:
 {question}
 
@@ -432,6 +580,7 @@ def build_editor_prompt_v6(
     topic: str = "general",
 ) -> str:
     config = ROUTE_CONFIG_V6[route]
+    topic_profile = route_topic_profile_v6(route, topic)
     verified_plan = {
         "question_quotes": analysis["question_quotes"],
         "interaction": {
@@ -460,6 +609,9 @@ def build_editor_prompt_v6(
 Редакторское правило для маршрута:
 {ROUTE_CONFIG_V6[route]['editor_rule']}
 
+Редакторское правило для темы:
+{topic_profile['editor_rule']}
+
 Вопрос:
 {question}
 
@@ -467,7 +619,7 @@ def build_editor_prompt_v6(
 {json.dumps(verified_plan, ensure_ascii=False, indent=2)}
 
 Эталон тона и логики для этого маршрута:
-{STYLE_EXAMPLES_V6[route]}
+{style_example_v6(route, topic)}
 
 Не копируйте факты и карты из эталона. Напишите ответ только для текущего вопроса.
 Любое новое психологическое объяснение, которого нет в проверенном плане, запрещено.
@@ -597,8 +749,10 @@ def validate_analysis_v6(
     question: str,
     cards: list[dict[str, Any]],
     route: str,
+    topic: str = "general",
 ) -> list[str]:
     issues: list[str] = []
+    topic_profile = route_topic_profile_v6(route, topic)
     string_fields = (
         "question_route",
         "interaction_code",
@@ -620,9 +774,9 @@ def validate_analysis_v6(
         issues.append("invalid_interaction_code")
     if payload.get("tendency_code") not in ROUTE_CONFIG_V6[route]["tendencies"]:
         issues.append("invalid_tendency")
-    if payload.get("focus_code") not in ROUTE_CONFIG_V6[route]["focuses"]:
+    if payload.get("focus_code") not in topic_profile["focus_codes"]:
         issues.append("invalid_focus_code")
-    if payload.get("criterion_code") not in ROUTE_CONFIG_V6[route]["criteria"]:
+    if payload.get("criterion_code") not in topic_profile["criterion_codes"]:
         issues.append("invalid_criterion_code")
 
     quotes = payload.get("question_quotes")
@@ -683,6 +837,7 @@ def validate_final_v6(
     question: str,
     cards: list[dict[str, Any]],
     route: str | None = None,
+    topic: str = "general",
 ) -> list[str]:
     text = payload.get("final_text")
     if not isinstance(text, str) or not text.strip():
@@ -702,12 +857,12 @@ def validate_final_v6(
     if missing:
         issues.append("final_missing_cards:" + "|".join(missing))
     if not re.search(
-        r"\b(?:по символике|в символике|расклад скорее|сочетание скорее)\b",
+        r"\b(?:символик\w*|расклад скорее|сочетание скорее)\b",
         paragraphs[0] if paragraphs else text,
         re.IGNORECASE,
     ):
         issues.append("missing_symbolic_frame")
-    if any(re.search(pattern, text, re.IGNORECASE) for pattern in HIGH_RISK_PATTERNS_V6):
+    if has_high_risk_claim_v6(text):
         issues.append("high_risk_claim")
     if any(
         re.search(pattern, text, re.IGNORECASE)
@@ -727,6 +882,14 @@ def validate_final_v6(
     if unsupported_markers:
         issues.append("unsupported_inference:" + "|".join(unsupported_markers))
     normalized_question = normalize_text_v6(question)
+    is_love_topic = normalize_topic_v6(topic) == "love" or any(
+        marker in normalized_question for marker in RELATIONSHIP_QUESTION_MARKERS_V6
+    )
+    if is_love_topic and any(
+        re.search(pattern, text, re.IGNORECASE)
+        for pattern in LOVE_DOMAIN_LEAK_PATTERNS_V6
+    ):
+        issues.append("domain_style_leak:career_to_love")
     if (
         route == "personal_choice"
         and any(marker in normalized_question for marker in RELATIONSHIP_QUESTION_MARKERS_V6)
@@ -861,7 +1024,11 @@ def generate_reading_v6(
     if analysis is not None:
         issues.extend(
             validate_analysis_v6(
-                analysis, question=question, cards=cards, route=route
+                analysis,
+                question=question,
+                cards=cards,
+                route=route,
+                topic=topic,
             )
         )
     if analysis is None or issues:
@@ -895,6 +1062,7 @@ def generate_reading_v6(
                 question=question,
                 cards=cards,
                 route=route,
+                topic=topic,
             )
         )
     if final_payload is None or final_issues:
