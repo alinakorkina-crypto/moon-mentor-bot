@@ -78,7 +78,7 @@ def diagnostic(label: str, value) -> str:
 
 
 def main() -> None:
-    print("\n===== READING ENGINE V6.3: CODED-PLAN PREVIEW =====\n")
+    print("\n===== READING ENGINE V6.4: TOPIC-AWARE PREVIEW =====\n")
     for index, scenario in enumerate(SCENARIOS, start=1):
         calls = {"analysis": 0, "editor": 0}
 
