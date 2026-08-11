@@ -78,7 +78,7 @@ def diagnostic(label: str, value) -> str:
 
 
 def main() -> None:
-    print("\n===== READING ENGINE V6.2: EVIDENCE-LOCKED PREVIEW =====\n")
+    print("\n===== READING ENGINE V6.3: CODED-PLAN PREVIEW =====\n")
     for index, scenario in enumerate(SCENARIOS, start=1):
         calls = {"analysis": 0, "editor": 0}
 
@@ -112,8 +112,11 @@ def main() -> None:
         if result.get("rejected_text"):
             analysis = result.get("analysis") or {}
             evidence_view = {
+                "question_quotes": analysis.get("question_quotes"),
+                "interaction_code": analysis.get("interaction_code"),
                 "focus_code": analysis.get("focus_code"),
-                "supported_observations": analysis.get("supported_observations"),
+                "tendency_code": analysis.get("tendency_code"),
+                "criterion_code": analysis.get("criterion_code"),
             }
             print("\nПроверенный контур аналитика:\n")
             print(json.dumps(evidence_view, ensure_ascii=False, indent=2))
