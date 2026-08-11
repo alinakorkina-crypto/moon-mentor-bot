@@ -2,6 +2,7 @@
 
 import json
 import re
+import unicodedata
 from typing import Any, Callable
 
 
@@ -29,6 +30,12 @@ ROUTE_CONFIG_V6 = {
             "какое место в вопросе занимает ожидание и что пользователь считает реальным "
             "проявлением инициативы. Не подменяйте ответ общим советом переключиться на себя."
         ),
+        "focuses": {
+            "evidence_threshold": "что именно считать реальным проявлением инициативы",
+            "waiting_cost": "сколько внимания занимает ожидание без подтверждения",
+            "uncertainty_limit": "где проходит личная граница неопределённости",
+            "personal_agency": "что остаётся в зоне собственного выбора пользователя",
+        },
     },
     "personal_choice": {
         "positions": (
@@ -47,6 +54,14 @@ ROUTE_CONFIG_V6 = {
             "устойчивость контакта. Основной проверяемый критерий — свойства самой связи: "
             "взаимность, инициатива, регулярность или соблюдение обозначенных границ."
         ),
+        "focuses": {
+            "needs_fit": "соответствует ли вариант потребностям и ожиданиям пользователя",
+            "reciprocity": "есть ли взаимность в наблюдаемой динамике",
+            "boundary": "какое условие или граница важны для выбора",
+            "tradeoff": "как соотносятся ценность варианта и его цена",
+            "decision_conditions": "какие проверяемые условия нужны для решения",
+            "clarity_requirements": "какой конкретики не хватает для выбора",
+        },
     },
 }
 
@@ -67,9 +82,13 @@ ANALYSIS_SYSTEM_V6 = """
 - позиции являются аналитическими ракурсами, а не последовательностью событий;
 - central_pattern связывает все карты через противоречие, усиление или коррекцию;
 - одна яркая карта не отменяет две остальные;
-- user_dilemma описывает выбор или напряжение, уже присутствующее в вопросе;
-- psychological_focus показывает, что пользователь может исследовать в собственном
-  отношении к ситуации; не приписывайте ему травму, зависимость, страх или мотив;
+- focus_code выбирается только из кодов, разрешённых для маршрута;
+- supported_observations содержит 2–4 наблюдения. У каждого есть statement,
+  source_type и source_refs. source_type может быть только question или cards;
+- для source_type=question в source_refs используйте точные цитаты из вопроса;
+- для source_type=cards в source_refs используйте только названия переданных карт,
+  а statement не должен выходить за переданные символические темы;
+- не добавляйте психологических понятий, которых нет в вопросе или темах карт;
 - reality_anchor отделяет символическую версию от того, что можно проверить;
 - symbolic_tendency выбирается только из значений, разрешённых для маршрута;
 - direct_answer отвечает на вопрос через степень символической поддержки, но не
@@ -93,6 +112,9 @@ final_text:
 - третий абзац содержит один наблюдаемый критерий и один вопрос в конце;
 - психологический фокус направлен на отношение пользователя к неопределённости,
   ожиданию, границам или условиям выбора только там, где это следует из вопроса;
+- используйте только факты и понятия из facts_used, supported_observations,
+  central_pattern, reality_anchor и переданных ролей карт. Не развивайте собственную
+  психологическую версию поверх проверенного анализа;
 - нельзя ставить пользователю психологический диагноз или объявлять скрытый мотив;
 - допустима живая условная версия: «это может указывать», «в символике расклада»;
 - нельзя утверждать чужие мысли, чувства, мотивы, намерения, сроки или будущие
@@ -123,8 +145,19 @@ ANALYSIS_SCHEMA_V6 = {
             },
         },
         "central_pattern": {"type": "string"},
-        "user_dilemma": {"type": "string"},
-        "psychological_focus": {"type": "string"},
+        "focus_code": {"type": "string"},
+        "supported_observations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "statement": {"type": "string"},
+                    "source_type": {"type": "string"},
+                    "source_refs": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["statement", "source_type", "source_refs"],
+            },
+        },
         "reality_anchor": {"type": "string"},
         "symbolic_tendency": {"type": "string"},
         "direct_answer": {"type": "string"},
@@ -137,8 +170,8 @@ ANALYSIS_SCHEMA_V6 = {
         "unknowns_kept_open",
         "card_roles",
         "central_pattern",
-        "user_dilemma",
-        "psychological_focus",
+        "focus_code",
+        "supported_observations",
         "reality_anchor",
         "symbolic_tendency",
         "direct_answer",
@@ -225,6 +258,20 @@ ADAPTATION_AND_BLAME_PATTERNS_V6 = (
     r"(?:ритм|формат|контакт|динамик)\w*\b",
     r"\bстабильност\w+ (?:этого |вашего |их )?(?:союза|контакта|отношений)\w* "
     r"зависит от (?:вашего|твоего)\b",
+    r"\bпереключ\w*(?:\s+\w+){0,5}\s+(?:дела|задачи|задачах)\b",
+)
+
+
+UNSUPPORTED_INFERENCE_PATTERNS_V6 = (
+    ("internal_barriers", r"\bвнутренн\w*\s+барьер\w*\b"),
+    ("idealization", r"\bидеализ\w*\b"),
+    ("long_term_perspective", r"\bдолгосрочн\w*\s+перспектив\w*\b"),
+    ("exhausting_anxiety", r"\bистощающ\w*\s+тревог\w*\b"),
+    ("psychological_center", r"\bпсихологическ\w*\s+центр\w*\b"),
+    ("waiting_costs", r"\bзатрат\w*\s+на\s+ожидан\w*\b"),
+    ("rare_moments", r"\bредк\w*\s+момент\w*\b"),
+    ("destructive_influence", r"\bразрушительн\w*\s+влиян\w*\b"),
+    ("near_term_claim", r"\bскор(?:ой|ого|ому|ую|ым|ом)\s+(?:инициатив|контакт|шаг)\w*\b"),
 )
 
 
@@ -248,8 +295,53 @@ RELATIONSHIP_CRITERION_MARKERS_V6 = (
 )
 
 
+INITIATIVE_CRITERION_MARKERS_V6 = (
+    "сообщен",
+    "звон",
+    "инициатив",
+    "самостоятельн",
+    "продолжен",
+    "действ",
+)
+
+
+LATIN_TO_CYRILLIC_LOOKALIKES_V6 = str.maketrans(
+    {
+        "A": "А", "a": "а", "B": "В", "C": "С", "c": "с",
+        "E": "Е", "e": "е", "H": "Н", "K": "К", "k": "к",
+        "M": "М", "O": "О", "o": "о", "P": "Р", "p": "р",
+        "T": "Т", "X": "Х", "x": "х", "Y": "У", "y": "у",
+    }
+)
+
+
 def normalize_text_v6(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower().replace("ё", "е"))
+
+
+def source_corpus_v6(question: str, cards: list[dict[str, Any]]) -> str:
+    card_text = " ".join(
+        value
+        for card in cards
+        for value in card.values()
+        if isinstance(value, str)
+    )
+    return normalize_text_v6(question + " " + card_text)
+
+
+def unsupported_inference_markers_v6(
+    text: str,
+    *,
+    question: str,
+    cards: list[dict[str, Any]],
+) -> list[str]:
+    normalized = normalize_text_v6(text)
+    sources = source_corpus_v6(question, cards)
+    return [
+        label
+        for label, pattern in UNSUPPORTED_INFERENCE_PATTERNS_V6
+        if re.search(pattern, normalized) and not re.search(pattern, sources)
+    ]
 
 
 def infer_question_route_v6(question: str) -> str:
@@ -316,6 +408,10 @@ def build_analysis_prompt_v6(
         for item in prepared
     )
     tendencies = ", ".join(config["tendencies"])
+    focus_options = "\n".join(
+        f"- {code}: {description}"
+        for code, description in config["focuses"].items()
+    )
     return f"""
 Маршрут вопроса: {route}
 Вопрос пользователя:
@@ -326,6 +422,9 @@ def build_analysis_prompt_v6(
 
 Допустимые symbolic_tendency: {tendencies}
 Правило прямого ответа: {config['answer_rule']}
+
+Допустимые focus_code:
+{focus_options}
 
 Порядок карт не является временной последовательностью. Не превращайте позиции
 в рассказ «сначала это случилось, потом произошло другое».
@@ -339,6 +438,9 @@ def build_editor_prompt_v6(
     route: str,
     analysis: dict[str, Any],
 ) -> str:
+    focus_description = ROUTE_CONFIG_V6[route]["focuses"].get(
+        analysis.get("focus_code"), ""
+    )
     return f"""
 Маршрут: {route}
 Правило ответа для маршрута:
@@ -346,6 +448,9 @@ def build_editor_prompt_v6(
 
 Редакторское правило для маршрута:
 {ROUTE_CONFIG_V6[route]['editor_rule']}
+
+Единственный разрешённый психологический фокус:
+{analysis.get('focus_code', '')}: {focus_description}
 
 Вопрос:
 {question}
@@ -360,6 +465,7 @@ def build_editor_prompt_v6(
 {STYLE_EXAMPLES_V6[route]}
 
 Не копируйте факты и карты из эталона. Напишите ответ только для текущего вопроса.
+Любое новое психологическое объяснение, которого нет в проверенном анализе, запрещено.
 Верните только JSON.
 """.strip()
 
@@ -442,7 +548,7 @@ def word_form_pattern_v6(word: str) -> str:
         ("яя", ("яя", "ей", "юю", "ею")),
         ("ый", ("ый", "ого", "ому", "ым", "ом")),
         ("ий", ("ий", "его", "ему", "им", "ем")),
-        ("а", ("а", "ы", "е", "у", "ой", "ою")),
+        ("а", ("а", "ы", "е", "у", "ой", "ою", "ей", "ею")),
         ("я", ("я", "и", "е", "ю", "ей", "ею")),
         ("ь", ("ь", "и", "ью")),
         ("е", ("е", "я", "а", "ю", "у", "ем", "ом")),
@@ -460,11 +566,23 @@ def card_pattern_v6(name: str) -> str:
     return rf"(?<!\w){r'[\s–—-]+'.join(word_form_pattern_v6(word) for word in words)}(?!\w)"
 
 
+def normalize_card_search_v6(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text)
+    normalized = re.sub(r"[\u200b-\u200f\u2060\ufeff]", "", normalized)
+    return normalized.translate(LATIN_TO_CYRILLIC_LOOKALIKES_V6)
+
+
 def missing_cards_v6(text: str, cards: list[dict[str, Any]]) -> list[str]:
+    normalized_text = normalize_card_search_v6(text)
     return [
         card["name"]
         for card in cards
         if not re.search(card_pattern_v6(card["name"]), text, re.IGNORECASE)
+        and not re.search(
+            card_pattern_v6(normalize_card_search_v6(card["name"])),
+            normalized_text,
+            re.IGNORECASE,
+        )
     ]
 
 
@@ -479,8 +597,7 @@ def validate_analysis_v6(
     string_fields = (
         "question_route",
         "central_pattern",
-        "user_dilemma",
-        "psychological_focus",
+        "focus_code",
         "reality_anchor",
         "symbolic_tendency",
         "direct_answer",
@@ -495,6 +612,8 @@ def validate_analysis_v6(
         issues.append("route_mismatch")
     if payload.get("symbolic_tendency") not in ROUTE_CONFIG_V6[route]["tendencies"]:
         issues.append("invalid_tendency")
+    if payload.get("focus_code") not in ROUTE_CONFIG_V6[route]["focuses"]:
+        issues.append("invalid_focus_code")
 
     facts = payload.get("facts_used")
     if not isinstance(facts, list) or not facts:
@@ -512,6 +631,34 @@ def validate_analysis_v6(
     unknowns = payload.get("unknowns_kept_open")
     if not isinstance(unknowns, list) or not unknowns:
         issues.append("missing:unknowns_kept_open")
+
+    observations = payload.get("supported_observations")
+    normalized_question = normalize_text_v6(question)
+    card_names = {card["name"] for card in cards}
+    if not isinstance(observations, list) or not 2 <= len(observations) <= 4:
+        issues.append("invalid:supported_observations")
+    else:
+        for item in observations:
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("statement"), str)
+                or not item["statement"].strip()
+                or item.get("source_type") not in {"question", "cards"}
+                or not isinstance(item.get("source_refs"), list)
+                or not item["source_refs"]
+                or any(not isinstance(ref, str) or not ref.strip() for ref in item["source_refs"])
+            ):
+                issues.append("invalid:supported_observation")
+                continue
+            if item["source_type"] == "question" and any(
+                normalize_text_v6(ref) not in normalized_question
+                for ref in item["source_refs"]
+            ):
+                issues.append("unsupported_observation_source")
+            if item["source_type"] == "cards" and any(
+                ref not in card_names for ref in item["source_refs"]
+            ):
+                issues.append("unsupported_observation_source")
 
     roles = payload.get("card_roles")
     expected_names = [card["name"] for card in cards]
@@ -546,6 +693,13 @@ def validate_analysis_v6(
     reflection = payload.get("reflection_question")
     if isinstance(reflection, str) and reflection.strip() and not reflection.rstrip().endswith("?"):
         issues.append("reflection_not_question")
+    unsupported_markers = unsupported_inference_markers_v6(
+        json.dumps(payload, ensure_ascii=False),
+        question=question,
+        cards=cards,
+    )
+    if unsupported_markers:
+        issues.append("analysis_unsupported_inference:" + "|".join(unsupported_markers))
     return list(dict.fromkeys(issues))
 
 
@@ -563,7 +717,8 @@ def split_paragraphs_v6(text: str) -> list[str]:
 
 
 def normalize_final_layout_v6(text: str) -> str:
-    normalized = re.sub(r"\r\n?", "\n", text).strip()
+    normalized = text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
+    normalized = re.sub(r"\r\n?", "\n", normalized).strip()
     paragraphs = split_paragraphs_v6(normalized)
     if len(paragraphs) == 3:
         return "\n\n".join(paragraphs)
@@ -572,6 +727,17 @@ def normalize_final_layout_v6(text: str) -> str:
     if len(nonempty_lines) == 3:
         return "\n\n".join(nonempty_lines)
     return normalized
+
+
+def criterion_statement_v6(paragraph: str) -> str:
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", paragraph.strip())
+        if sentence.strip()
+    ]
+    if len(sentences) > 1 and sentences[-1].endswith("?"):
+        return " ".join(sentences[:-1])
+    return paragraph.strip()
 
 
 def validate_final_v6(
@@ -616,18 +782,36 @@ def validate_final_v6(
         for pattern in ADAPTATION_AND_BLAME_PATTERNS_V6
     ):
         issues.append("adaptation_or_user_blame")
+    unsupported_markers = unsupported_inference_markers_v6(
+        text,
+        question=question,
+        cards=cards,
+    )
+    if unsupported_markers:
+        issues.append("unsupported_inference:" + "|".join(unsupported_markers))
     normalized_question = normalize_text_v6(question)
     if (
         route == "personal_choice"
         and any(marker in normalized_question for marker in RELATIONSHIP_QUESTION_MARKERS_V6)
         and paragraphs
     ):
-        criterion_paragraph = normalize_text_v6(paragraphs[-1])
+        criterion_paragraph = normalize_text_v6(
+            criterion_statement_v6(paragraphs[-1])
+        )
         if not any(
             marker in criterion_paragraph
             for marker in RELATIONSHIP_CRITERION_MARKERS_V6
         ):
             issues.append("missing_relationship_reality_criterion")
+    if route == "initiative" and paragraphs:
+        criterion_paragraph = normalize_text_v6(
+            criterion_statement_v6(paragraphs[-1])
+        )
+        if not any(
+            marker in criterion_paragraph
+            for marker in INITIATIVE_CRITERION_MARKERS_V6
+        ):
+            issues.append("missing_initiative_reality_criterion")
     for pattern in UNSUPPORTED_STORY_PATTERNS_V6:
         match = re.search(pattern, text, re.IGNORECASE)
         if match and normalize_text_v6(match.group(0)) not in normalized_question:
@@ -649,16 +833,16 @@ def fallback_v6(question: str, cards: list[dict[str, Any]], route: str) -> str:
         return (
             "По символике сочетания нет достаточной опоры рассчитывать на самостоятельный "
             "первый шаг: возможность контакта остаётся открытой, но не складывается в "
-            "уверенное указание. Психологический центр вопроса здесь связан с тем, какое "
-            "место в вашей жизни занимает ожидание этого проявления.\n\n"
+            "уверенное указание. Здесь важно различать надежду на проявление и то, что "
+            "действительно можно считать инициативой.\n\n"
             f"{names[0]} поддерживает тему движения и инициативы, однако {names[1]} вносит "
             f"сильное противоречие и мешает читать импульс как устойчивый. {names[2]} "
             "сохраняет надежду и перспективу, но не превращает их в совершённое действие. "
             "Вместе карты показывают разницу между возможностью контакта и реальным шагом.\n\n"
             "Проверяемым подтверждением будет содержательное сообщение или самостоятельное "
             "продолжение разговора без вашего предварительного действия. Какое проявление "
-            "вы сочтёте настоящей инициативой и сколько пространства готовы оставлять "
-            "этому ожиданию без подтверждения?"
+            "вы сочтёте настоящей инициативой и где для вас проходит граница между открытой "
+            "возможностью и ожиданием, которое занимает слишком много внимания?"
         )
     if route == "personal_choice" and len(names) >= 3:
         normalized_question = normalize_text_v6(question)
@@ -668,7 +852,7 @@ def fallback_v6(question: str, cards: list[dict[str, Any]], route: str) -> str:
         ):
             return (
                 "По символике расклада решение зависит от того, соответствует ли такой "
-                "контакт вашим потребностям в близости и устойчивости. Тёплые эпизоды "
+                "контакт вашим ожиданиям от близости и устойчивости. Тёплые эпизоды "
                 "могут быть значимы, но сами по себе ещё не отвечают на вопрос о ценности "
                 "продолжения этой связи.\n\n"
                 f"{names[0]} показывает привлекательную сторону общения, {names[1]} "
@@ -753,6 +937,7 @@ def generate_reading_v6(
             "ai_requests": 1,
             "analysis_diagnostics": analysis_diagnostics,
             "editor_diagnostics": None,
+            "rejected_analysis": analysis,
         }
 
     editor_reply = editor_call(build_editor_prompt_v6(question, cards, route, analysis))
@@ -784,6 +969,7 @@ def generate_reading_v6(
             "analysis_diagnostics": analysis_diagnostics,
             "editor_diagnostics": editor_diagnostics,
             "rejected_text": rejected_text,
+            "analysis": analysis,
         }
 
     return {
