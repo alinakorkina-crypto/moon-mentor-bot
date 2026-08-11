@@ -10,8 +10,11 @@ from reading_engine_v6 import (
     build_analysis_prompt_v6,
     build_editor_prompt_v6,
     clean_stars_v6,
+    count_words_v6,
+    fallback_v6,
     generate_reading_v6,
     infer_question_route_v6,
+    normalize_final_layout_v6,
     parse_json_v6,
     prepare_cards_v6,
     validate_analysis_v6,
@@ -357,6 +360,70 @@ class FinalValidationTests(unittest.TestCase):
         )
         self.assertIn("pseudo_psychology", issues)
 
+    def test_normalizes_blank_lines_with_spaces(self):
+        source = INITIATIVE_FINAL.replace("\n\n", "\n   \n")
+        normalized = normalize_final_layout_v6(source)
+        self.assertEqual(normalized, INITIATIVE_FINAL)
+        self.assertEqual(
+            validate_final_v6(
+                {"final_text": source},
+                question=INITIATIVE_QUESTION,
+                cards=INITIATIVE_CARDS,
+            ),
+            [],
+        )
+
+    def test_normalizes_three_single_line_paragraphs(self):
+        source = INITIATIVE_FINAL.replace("\n\n", "\n")
+        self.assertEqual(normalize_final_layout_v6(source), INITIATIVE_FINAL)
+
+    def test_rejects_inevitable_relationship_prediction(self):
+        text = CHOICE_FINAL.replace(
+            "Отшельник добавляет к этой картине дистанцию",
+            "Отшельник добавляет неизбежную дистанцию",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+        )
+        self.assertIn("unsupported_story", issues)
+
+    def test_rejects_adaptation_as_condition(self):
+        text = CHOICE_FINAL.replace(
+            "решение зависит от того, подходит ли вам контакт",
+            "решение зависит от того, готовы ли вы принять такой контакт",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+        )
+        self.assertIn("adaptation_or_user_blame", issues)
+
+    def test_relationship_requires_external_reality_criterion(self):
+        text = CHOICE_FINAL.replace(
+            "Проверяемым ориентиром может стать взаимность инициативы после очередной паузы и "
+            "ваше состояние между разговорами. Какой ритм общения оставляет вам достаточно "
+            "спокойствия и ощущения взаимности?",
+            "Проверяемым ориентиром может стать ваше внутреннее спокойствие между разговорами. "
+            "Что помогает вам сохранять эмоциональное равновесие?",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+        )
+        self.assertIn("missing_relationship_reality_criterion", issues)
+
+    def test_fallbacks_meet_production_length(self):
+        initiative = fallback_v6(INITIATIVE_QUESTION, INITIATIVE_CARDS, "initiative")
+        choice = fallback_v6(CHOICE_QUESTION, CHOICE_CARDS, "personal_choice")
+        for text in (initiative, choice):
+            with self.subTest(text=text[:30]):
+                self.assertGreaterEqual(count_words_v6(text), 100)
+                self.assertLessEqual(count_words_v6(text), 170)
+
     def test_cleaning_removes_only_markdown_stars(self):
         source = "**Тёплый** контакт и *ясный* вопрос: 2 * 3."
         self.assertEqual(clean_stars_v6(source), "Тёплый контакт и ясный вопрос: 2 * 3.")
@@ -397,6 +464,39 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result["stage"], "analysis")
         self.assertEqual(result["ai_requests"], 1)
         self.assertEqual(editor_calls, [])
+
+    def test_editor_formatting_is_repaired_without_fallback(self):
+        result = generate_reading_v6(
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            analysis_call=lambda _: json.dumps(
+                initiative_analysis(), ensure_ascii=False
+            ),
+            editor_call=lambda _: json.dumps(
+                {"final_text": INITIATIVE_FINAL.replace("\n\n", "\n   \n")},
+                ensure_ascii=False,
+            ),
+        )
+        self.assertFalse(result["used_fallback"])
+        self.assertEqual(result["text"], INITIATIVE_FINAL)
+
+    def test_rejected_editor_text_is_returned_for_diagnostics(self):
+        unsafe_text = CHOICE_FINAL.replace(
+            "решение зависит от того, подходит ли вам контакт",
+            "решение зависит от того, готовы ли вы принять такой контакт",
+        )
+        result = generate_reading_v6(
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+            analysis_call=lambda _: json.dumps(choice_analysis(), ensure_ascii=False),
+            editor_call=lambda _: json.dumps(
+                {"final_text": unsafe_text}, ensure_ascii=False
+            ),
+        )
+        self.assertTrue(result["used_fallback"])
+        self.assertEqual(result["stage"], "editor")
+        self.assertIn("adaptation_or_user_blame", result["issues"])
+        self.assertEqual(result["rejected_text"], unsafe_text)
 
     def test_unsupported_route_uses_no_ai(self):
         calls = []
