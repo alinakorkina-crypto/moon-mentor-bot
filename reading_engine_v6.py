@@ -24,6 +24,11 @@ ROUTE_CONFIG_V6 = {
             "противоречивую картину или не даёт опоры для такого ожидания. Это оценка "
             "символического рисунка, а не прогноз чужого действия."
         ),
+        "editor_rule": (
+            "Психологический фокус — не угадывать действие другого человека, а показать, "
+            "какое место в вопросе занимает ожидание и что пользователь считает реальным "
+            "проявлением инициативы. Не подменяйте ответ общим советом переключиться на себя."
+        ),
     },
     "personal_choice": {
         "positions": (
@@ -35,6 +40,12 @@ ROUTE_CONFIG_V6 = {
         "answer_rule": (
             "Не принимайте решение за пользователя. Покажите, склоняется ли символический "
             "рисунок к варианту, отдаляется от него или делает решение условным."
+        ),
+        "editor_rule": (
+            "Если вопрос касается отношений, не предлагайте пользователю терпеть, принимать "
+            "или спокойно переносить неудобную динамику. Не делайте его ответственным за "
+            "устойчивость контакта. Основной проверяемый критерий — свойства самой связи: "
+            "взаимность, инициатива, регулярность или соблюдение обозначенных границ."
         ),
     },
 }
@@ -195,6 +206,8 @@ UNSUPPORTED_STORY_PATTERNS_V6 = (
     r"\bэнерги\w* взаимодействи\w*\b",
     r"\bкрасив\w* дистанци\w*\b",
     r"\bдолгосрочн\w* надежд\w*\b",
+    r"\bнеизбежн\w*\b",
+    r"\bбуд\w* (?:чередоваться|повторяться|пропадать|возникать)\b",
 )
 
 
@@ -203,6 +216,35 @@ PSEUDO_PSYCHOLOGY_PATTERNS_V6 = (
     r"\bу вас \w+ привязанность\b",
     r"\bвы (?:эмоционально зависимы|одержимы|созависимы)\b",
     r"\bваше бессознательное\b",
+)
+
+
+ADAPTATION_AND_BLAME_PATTERNS_V6 = (
+    r"\bесли (?:вы|ты) готов\w* (?:принять|терпеть|переносить|адаптироваться)\b",
+    r"\b(?:принять|терпеть) (?:такой|этот|прерывистый|неудобный)\w* "
+    r"(?:ритм|формат|контакт|динамик)\w*\b",
+    r"\bстабильност\w+ (?:этого |вашего |их )?(?:союза|контакта|отношений)\w* "
+    r"зависит от (?:вашего|твоего)\b",
+)
+
+
+RELATIONSHIP_QUESTION_MARKERS_V6 = (
+    "отношен",
+    "контакт",
+    "общен",
+    "связь",
+    "встреч",
+)
+
+
+RELATIONSHIP_CRITERION_MARKERS_V6 = (
+    "взаимн",
+    "инициатив",
+    "с обеих сторон",
+    "регулярн",
+    "частот",
+    "длительност",
+    "границ",
 )
 
 
@@ -301,6 +343,9 @@ def build_editor_prompt_v6(
 Маршрут: {route}
 Правило ответа для маршрута:
 {ROUTE_CONFIG_V6[route]['answer_rule']}
+
+Редакторское правило для маршрута:
+{ROUTE_CONFIG_V6[route]['editor_rule']}
 
 Вопрос:
 {question}
@@ -508,17 +553,41 @@ def count_words_v6(text: str) -> int:
     return len(re.findall(r"[A-Za-zА-Яа-яЁё0-9]+(?:[-–][A-Za-zА-Яа-яЁё0-9]+)?", text))
 
 
+def split_paragraphs_v6(text: str) -> list[str]:
+    normalized = re.sub(r"\r\n?", "\n", text).strip()
+    return [
+        part.strip()
+        for part in re.split(r"\n[ \t]*\n+", normalized)
+        if part.strip()
+    ]
+
+
+def normalize_final_layout_v6(text: str) -> str:
+    normalized = re.sub(r"\r\n?", "\n", text).strip()
+    paragraphs = split_paragraphs_v6(normalized)
+    if len(paragraphs) == 3:
+        return "\n\n".join(paragraphs)
+
+    nonempty_lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+    if len(nonempty_lines) == 3:
+        return "\n\n".join(nonempty_lines)
+    return normalized
+
+
 def validate_final_v6(
     payload: dict[str, Any],
     *,
     question: str,
     cards: list[dict[str, Any]],
+    route: str | None = None,
 ) -> list[str]:
     text = payload.get("final_text")
     if not isinstance(text, str) or not text.strip():
         return ["missing:final_text"]
+    text = normalize_final_layout_v6(text)
+    route = route or infer_question_route_v6(question)
     issues: list[str] = []
-    paragraphs = [part.strip() for part in text.split("\n\n") if part.strip()]
+    paragraphs = split_paragraphs_v6(text)
     if len(paragraphs) != 3:
         issues.append("paragraph_count")
     words = count_words_v6(text)
@@ -542,7 +611,23 @@ def validate_final_v6(
         for pattern in PSEUDO_PSYCHOLOGY_PATTERNS_V6
     ):
         issues.append("pseudo_psychology")
+    if any(
+        re.search(pattern, text, re.IGNORECASE)
+        for pattern in ADAPTATION_AND_BLAME_PATTERNS_V6
+    ):
+        issues.append("adaptation_or_user_blame")
     normalized_question = normalize_text_v6(question)
+    if (
+        route == "personal_choice"
+        and any(marker in normalized_question for marker in RELATIONSHIP_QUESTION_MARKERS_V6)
+        and paragraphs
+    ):
+        criterion_paragraph = normalize_text_v6(paragraphs[-1])
+        if not any(
+            marker in criterion_paragraph
+            for marker in RELATIONSHIP_CRITERION_MARKERS_V6
+        ):
+            issues.append("missing_relationship_reality_criterion")
     for pattern in UNSUPPORTED_STORY_PATTERNS_V6:
         match = re.search(pattern, text, re.IGNORECASE)
         if match and normalize_text_v6(match.group(0)) not in normalized_question:
@@ -562,17 +647,39 @@ def fallback_v6(question: str, cards: list[dict[str, Any]], route: str) -> str:
     names = [card["name"] for card in cards]
     if route == "initiative" and len(names) >= 3:
         return (
-            "По символике сочетания ясного подтверждения самостоятельного первого шага "
-            "сейчас нет: возможность инициативы присутствует, но встречает заметное "
-            "противоречие и остаётся открытой, а не оформленной в действие.\n\n"
-            f"{names[0]} поддерживает тему движения, {names[1]} мешает читать этот импульс "
-            f"как прямой и устойчивый, а {names[2]} сохраняет возможность, не превращая "
-            "её в обещание контакта. Вместе карты дают смешанную, а не однозначную картину.\n\n"
-            "Наблюдаемым подтверждением станет самостоятельное продолжение общения без "
-            "вашего предварительного шага. Какое проявление вы сами сочтёте настоящей "
-            "инициативой, а не случайным сигналом?"
+            "По символике сочетания нет достаточной опоры рассчитывать на самостоятельный "
+            "первый шаг: возможность контакта остаётся открытой, но не складывается в "
+            "уверенное указание. Психологический центр вопроса здесь связан с тем, какое "
+            "место в вашей жизни занимает ожидание этого проявления.\n\n"
+            f"{names[0]} поддерживает тему движения и инициативы, однако {names[1]} вносит "
+            f"сильное противоречие и мешает читать импульс как устойчивый. {names[2]} "
+            "сохраняет надежду и перспективу, но не превращает их в совершённое действие. "
+            "Вместе карты показывают разницу между возможностью контакта и реальным шагом.\n\n"
+            "Проверяемым подтверждением будет содержательное сообщение или самостоятельное "
+            "продолжение разговора без вашего предварительного действия. Какое проявление "
+            "вы сочтёте настоящей инициативой и сколько пространства готовы оставлять "
+            "этому ожиданию без подтверждения?"
         )
     if route == "personal_choice" and len(names) >= 3:
+        normalized_question = normalize_text_v6(question)
+        if any(
+            marker in normalized_question
+            for marker in RELATIONSHIP_QUESTION_MARKERS_V6
+        ):
+            return (
+                "По символике расклада решение зависит от того, соответствует ли такой "
+                "контакт вашим потребностям в близости и устойчивости. Тёплые эпизоды "
+                "могут быть значимы, но сами по себе ещё не отвечают на вопрос о ценности "
+                "продолжения этой связи.\n\n"
+                f"{names[0]} показывает привлекательную сторону общения, {names[1]} "
+                f"подчёркивает цену дистанции, а {names[2]} связывает их через подходящую "
+                "вам меру участия. Карты не предлагают приспособиться к неудобному ритму: "
+                "они помогают сопоставить приятные моменты с тем, чего вам не хватает "
+                "между ними.\n\n"
+                "Проверяемым ориентиром станет взаимность инициативы после пауз и то, "
+                "поддерживается ли контакт усилиями обеих сторон. Какой ритм общения и "
+                "уровень взаимности необходимы вам, чтобы продолжение имело ценность?"
+            )
         return (
             "По символике расклада решение зависит от того, насколько рассматриваемый "
             "вариант соответствует вашим собственным условиям, а не только от его "
@@ -652,9 +759,19 @@ def generate_reading_v6(
     editor_raw, editor_diagnostics = unpack_reply_v6(editor_reply)
     final_payload, final_issues = parse_json_v6(editor_raw)
     final_issues = decorate_transport_issues_v6(final_issues, editor_diagnostics)
+    rejected_text = None
     if final_payload is not None:
+        if isinstance(final_payload.get("final_text"), str):
+            normalized_final = normalize_final_layout_v6(final_payload["final_text"])
+            final_payload = {**final_payload, "final_text": normalized_final}
+            rejected_text = clean_stars_v6(normalized_final)
         final_issues.extend(
-            validate_final_v6(final_payload, question=question, cards=cards)
+            validate_final_v6(
+                final_payload,
+                question=question,
+                cards=cards,
+                route=route,
+            )
         )
     if final_payload is None or final_issues:
         return {
@@ -666,6 +783,7 @@ def generate_reading_v6(
             "ai_requests": 2,
             "analysis_diagnostics": analysis_diagnostics,
             "editor_diagnostics": editor_diagnostics,
+            "rejected_text": rejected_text,
         }
 
     return {
@@ -678,4 +796,5 @@ def generate_reading_v6(
         "analysis": analysis,
         "analysis_diagnostics": analysis_diagnostics,
         "editor_diagnostics": editor_diagnostics,
+        "rejected_text": None,
     }
