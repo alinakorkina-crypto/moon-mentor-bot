@@ -65,6 +65,16 @@ CHOICE_CARDS = [
     },
 ]
 
+CAREER_QUESTION = (
+    "Мне предлагают новую работу с большей зарплатой, но обязанности пока "
+    "описаны расплывчато. Соглашаться?"
+)
+CAREER_CARDS = [
+    {"name": "Колесница", "career": "Возможность профессионального движения."},
+    {"name": "Луна", "career": "Недостаток конкретики в условиях роли."},
+    {"name": "Император", "career": "Ясная структура ответственности и полномочий."},
+]
+
 
 def initiative_analysis():
     return {
@@ -85,6 +95,17 @@ def choice_analysis():
         "focus_code": "reciprocity",
         "tendency_code": "conditional",
         "criterion_code": "mutual_initiative",
+    }
+
+
+def career_analysis():
+    return {
+        "question_route": "personal_choice",
+        "question_quotes": ["большей зарплатой", "обязанности пока описаны расплывчато"],
+        "interaction_code": "contrast",
+        "focus_code": "clarity_requirements",
+        "tendency_code": "conditional",
+        "criterion_code": "clear_conditions",
     }
 
 
@@ -188,6 +209,42 @@ class PromptTests(unittest.TestCase):
             prompt,
         )
 
+    def test_love_analysis_prompt_excludes_career_codes(self):
+        prompt = build_analysis_prompt_v6(
+            CHOICE_QUESTION,
+            CHOICE_CARDS,
+            "personal_choice",
+            topic="love",
+        )
+        self.assertIn("mutual_initiative", prompt)
+        self.assertIn("consistency", prompt)
+        self.assertNotIn("clear_conditions", prompt)
+        self.assertNotIn("concrete_information", prompt)
+
+    def test_career_analysis_prompt_excludes_relationship_codes(self):
+        prompt = build_analysis_prompt_v6(
+            CAREER_QUESTION,
+            CAREER_CARDS,
+            "personal_choice",
+            topic="career",
+        )
+        self.assertIn("clear_conditions", prompt)
+        self.assertIn("concrete_information", prompt)
+        self.assertNotIn("mutual_initiative", prompt)
+        self.assertNotIn("consistency", prompt)
+
+    def test_love_editor_uses_relationship_style_example(self):
+        prompt = build_editor_prompt_v6(
+            CHOICE_QUESTION,
+            CHOICE_CARDS,
+            "personal_choice",
+            choice_analysis(),
+            topic="love",
+        )
+        self.assertIn("Двойка Кубков", prompt)
+        self.assertIn("живым языком", prompt)
+        self.assertNotIn("Колесо Фортуны", prompt)
+
     def test_system_prompts_split_analysis_from_prose(self):
         self.assertIn("Не пишите толкование", ANALYSIS_SYSTEM_V6)
         self.assertIn("ровно 3 коротких абзаца", EDITOR_SYSTEM_V6)
@@ -249,6 +306,19 @@ class AnalysisValidationTests(unittest.TestCase):
                 question=CHOICE_QUESTION,
                 cards=CHOICE_CARDS,
                 route="personal_choice",
+                topic="love",
+            ),
+            [],
+        )
+
+    def test_valid_career_analysis(self):
+        self.assertEqual(
+            validate_analysis_v6(
+                career_analysis(),
+                question=CAREER_QUESTION,
+                cards=CAREER_CARDS,
+                route="personal_choice",
+                topic="career",
             ),
             [],
         )
@@ -332,6 +402,20 @@ class AnalysisValidationTests(unittest.TestCase):
         )
         self.assertIn("invalid_criterion_code", issues)
 
+    def test_love_rejects_career_focus_and_criterion(self):
+        payload = choice_analysis()
+        payload["focus_code"] = "clarity_requirements"
+        payload["criterion_code"] = "clear_conditions"
+        issues = validate_analysis_v6(
+            payload,
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+            route="personal_choice",
+            topic="love",
+        )
+        self.assertIn("invalid_focus_code", issues)
+        self.assertIn("invalid_criterion_code", issues)
+
 
 class FinalValidationTests(unittest.TestCase):
     def test_valid_initiative_final(self):
@@ -364,6 +448,23 @@ class FinalValidationTests(unittest.TestCase):
             cards=INITIATIVE_CARDS,
         )
         self.assertIn("high_risk_claim", issues)
+
+    def test_accepts_symbolic_noun_and_negated_future_disclaimer(self):
+        text = INITIATIVE_FINAL.replace(
+            "По символике этого расклада картина смешанная:",
+            (
+                "Символика вашего расклада даёт смешанную картину и не гарантирует, "
+                "что загаданный человек выйдет первым на контакт:"
+            ),
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            route="initiative",
+        )
+        self.assertNotIn("missing_symbolic_frame", issues)
+        self.assertNotIn("high_risk_claim", issues)
 
     def test_rejects_invented_story_detail(self):
         text = INITIATIVE_FINAL.replace(
@@ -444,6 +545,34 @@ class FinalValidationTests(unittest.TestCase):
             cards=CHOICE_CARDS,
         )
         self.assertIn("adaptation_or_user_blame", issues)
+
+    def test_rejects_career_language_in_relationship_reading(self):
+        text = CHOICE_FINAL.replace(
+            "взаимность инициативы",
+            "взаимность инициативы и зафиксированные условия",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+            route="personal_choice",
+            topic="love",
+        )
+        self.assertIn("domain_style_leak:career_to_love", issues)
+
+    def test_rejects_invented_future_relief(self):
+        text = CHOICE_FINAL.replace(
+            "подходит ли вам контакт",
+            "формат перестанет приносить дискомфорт",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+            route="personal_choice",
+            topic="love",
+        )
+        self.assertIn("unsupported_story", issues)
 
     def test_relationship_requires_external_reality_criterion(self):
         text = CHOICE_FINAL.replace(
@@ -598,6 +727,7 @@ class PipelineTests(unittest.TestCase):
         result = generate_reading_v6(
             question=CHOICE_QUESTION,
             cards=CHOICE_CARDS,
+            topic="love",
             analysis_call=lambda _: json.dumps(choice_analysis(), ensure_ascii=False),
             editor_call=lambda _: json.dumps(
                 {"final_text": unsafe_text}, ensure_ascii=False
