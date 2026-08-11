@@ -1,7 +1,7 @@
 """Two-route control preview for Reading Engine v6."""
 
 from ai_reader_v6 import ask_gemini_analysis_v6, ask_gemini_editor_v6
-from reading_engine_v6 import count_words_v6, generate_reading_v6
+from reading_engine_v6 import count_words_v6, generate_reading_v6, split_paragraphs_v6
 
 
 SCENARIOS = [
@@ -76,7 +76,7 @@ def diagnostic(label: str, value) -> str:
 
 
 def main() -> None:
-    print("\n===== READING ENGINE V6: ROUTED TWO-PASS PREVIEW =====\n")
+    print("\n===== READING ENGINE V6.1: PSYCHOLOGICAL ROUTED PREVIEW =====\n")
     for index, scenario in enumerate(SCENARIOS, start=1):
         calls = {"analysis": 0, "editor": 0}
 
@@ -101,12 +101,15 @@ def main() -> None:
         print(result["text"])
         print(f"\nМаршрут: {result['route']}")
         print(f"Слов: {count_words_v6(result['text'])}")
-        print(f"Абзацев: {len(result['text'].split(chr(10) + chr(10)))}")
+        print(f"Абзацев: {len(split_paragraphs_v6(result['text']))}")
         print("Источник: " + ("локальный fallback" if result["used_fallback"] else "AI-анализ + AI-редактор"))
         print(f"Этап: {result['stage']}")
         print("Валидация: " + (", ".join(result["issues"]) if result["issues"] else "OK"))
         print(diagnostic("Аналитик", result.get("analysis_diagnostics")))
         print(diagnostic("Редактор", result.get("editor_diagnostics")))
+        if result.get("rejected_text"):
+            print("\nОтклонённый AI-текст:\n")
+            print(result["rejected_text"])
         print(f"AI-запросов: {calls['analysis'] + calls['editor']}")
         print(f"\n===== END TEST {index} =====\n")
 
