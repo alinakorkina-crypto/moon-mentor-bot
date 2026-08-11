@@ -14,6 +14,7 @@ from reading_engine_v6 import (
     fallback_v6,
     generate_reading_v6,
     infer_question_route_v6,
+    missing_cards_v6,
     normalize_final_layout_v6,
     parse_json_v6,
     prepare_cards_v6,
@@ -91,8 +92,19 @@ def initiative_analysis():
             "Колесница поддерживает импульс, Башня нарушает его устойчивость, а "
             "Звезда оставляет возможность открытой без обещания результата."
         ),
-        "user_dilemma": "Оставаться в ожидании первого шага или опираться на факты.",
-        "psychological_focus": "Значение ожидания и личный предел неопределённости.",
+        "focus_code": "evidence_threshold",
+        "supported_observations": [
+            {
+                "statement": "Вопрос отделяет ожидание от самостоятельного первого шага.",
+                "source_type": "question",
+                "source_refs": ["думаю постоянно", "первым на контакт"],
+            },
+            {
+                "statement": "Движение встречает противоречие, а возможность остаётся открытой.",
+                "source_type": "cards",
+                "source_refs": ["Колесница", "Башня", "Звезда"],
+            },
+        ],
         "reality_anchor": "Фактом будет только самостоятельное продолжение общения.",
         "symbolic_tendency": "contradictory",
         "direct_answer": "Символическая картина смешанная: возможность есть, подтверждения нет.",
@@ -128,8 +140,19 @@ def choice_analysis():
             "Солнце и Отшельник создают контраст тепла и дистанции, а Умеренность "
             "переводит его в вопрос о приемлемой мере участия."
         ),
-        "user_dilemma": "Ценность тёплого общения сталкивается с ценой долгих пауз.",
-        "psychological_focus": "Совместимость такого ритма с потребностями пользователя.",
+        "focus_code": "reciprocity",
+        "supported_observations": [
+            {
+                "statement": "Тёплое общение сочетается с длительными исчезновениями.",
+                "source_type": "question",
+                "source_refs": ["тепло общаемся", "надолго пропадает"],
+            },
+            {
+                "statement": "Тепло и дистанция связываются через подходящую меру участия.",
+                "source_type": "cards",
+                "source_refs": ["Солнце", "Отшельник", "Умеренность"],
+            },
+        ],
         "reality_anchor": "Взаимность инициативы и фактическая длительность пауз.",
         "symbolic_tendency": "conditional",
         "direct_answer": "Решение зависит от того, подходит ли пользователю такой ритм.",
@@ -196,7 +219,8 @@ class RoutingTests(unittest.TestCase):
 class PromptTests(unittest.TestCase):
     def test_schemas_require_complete_payloads(self):
         self.assertIn("card_roles", ANALYSIS_SCHEMA_V6["required"])
-        self.assertIn("psychological_focus", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("focus_code", ANALYSIS_SCHEMA_V6["required"])
+        self.assertIn("supported_observations", ANALYSIS_SCHEMA_V6["required"])
         self.assertIn("reality_anchor", ANALYSIS_SCHEMA_V6["required"])
         self.assertEqual(EDITOR_SCHEMA_V6["required"], ["final_text"])
 
@@ -208,6 +232,7 @@ class PromptTests(unittest.TestCase):
             self.assertIn(position, prompt)
         self.assertIn("не является временной последовательностью", prompt)
         self.assertIn("contradictory", prompt)
+        self.assertIn("evidence_threshold", prompt)
 
     def test_editor_prompt_contains_verified_analysis_and_style_example(self):
         prompt = build_editor_prompt_v6(
@@ -219,6 +244,7 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Проверенный анализ", prompt)
         self.assertIn("Эталон тона", prompt)
         self.assertIn("Колесница", prompt)
+        self.assertIn("Единственный разрешённый психологический фокус", prompt)
 
     def test_system_prompts_split_analysis_from_prose(self):
         self.assertIn("Не пишите финальный текст", ANALYSIS_SYSTEM_V6)
@@ -303,6 +329,43 @@ class AnalysisValidationTests(unittest.TestCase):
         )
         self.assertIn("card_positions_mismatch", issues)
 
+    def test_rejects_unknown_focus_code(self):
+        payload = initiative_analysis()
+        payload["focus_code"] = "attachment_diagnosis"
+        issues = validate_analysis_v6(
+            payload,
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            route="initiative",
+        )
+        self.assertIn("invalid_focus_code", issues)
+
+    def test_rejects_observation_without_real_source(self):
+        payload = initiative_analysis()
+        payload["supported_observations"][0]["source_refs"] = ["между ними пауза"]
+        issues = validate_analysis_v6(
+            payload,
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            route="initiative",
+        )
+        self.assertIn("unsupported_observation_source", issues)
+
+    def test_rejects_invented_psychology_in_analysis(self):
+        payload = initiative_analysis()
+        payload["supported_observations"][0]["statement"] = (
+            "Ожидание связано с идеализированным образом человека."
+        )
+        issues = validate_analysis_v6(
+            payload,
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            route="initiative",
+        )
+        self.assertTrue(
+            any(issue.startswith("analysis_unsupported_inference:") for issue in issues)
+        )
+
 
 class FinalValidationTests(unittest.TestCase):
     def test_valid_initiative_final(self):
@@ -377,6 +440,21 @@ class FinalValidationTests(unittest.TestCase):
         source = INITIATIVE_FINAL.replace("\n\n", "\n")
         self.assertEqual(normalize_final_layout_v6(source), INITIATIVE_FINAL)
 
+    def test_decodes_literal_json_newlines(self):
+        source = INITIATIVE_FINAL.replace("\n\n", "\\n\\n")
+        self.assertEqual(normalize_final_layout_v6(source), INITIATIVE_FINAL)
+
+    def test_card_search_accepts_latin_lookalike(self):
+        text = INITIATIVE_FINAL.replace("Колесница", "Kолесница")
+        self.assertEqual(missing_cards_v6(text, INITIATIVE_CARDS), [])
+
+    def test_card_search_accepts_instrumental_form(self):
+        text = INITIATIVE_FINAL.replace(
+            "Колесница поддерживает тему движения",
+            "Колесницей поддерживается тема движения",
+        )
+        self.assertEqual(missing_cards_v6(text, INITIATIVE_CARDS), [])
+
     def test_rejects_inevitable_relationship_prediction(self):
         text = CHOICE_FINAL.replace(
             "Отшельник добавляет к этой картине дистанцию",
@@ -415,6 +493,72 @@ class FinalValidationTests(unittest.TestCase):
             cards=CHOICE_CARDS,
         )
         self.assertIn("missing_relationship_reality_criterion", issues)
+
+    def test_reflection_question_cannot_fake_relationship_criterion(self):
+        text = CHOICE_FINAL.replace(
+            "Проверяемым ориентиром может стать взаимность инициативы после очередной паузы и "
+            "ваше состояние между разговорами. Какой ритм общения оставляет вам достаточно "
+            "спокойствия и ощущения взаимности?",
+            "Проверяемым ориентиром может стать только ваше внутреннее спокойствие. "
+            "Как вы определите взаимность в этом общении?",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+        )
+        self.assertIn("missing_relationship_reality_criterion", issues)
+
+    def test_initiative_requires_external_reality_criterion(self):
+        text = INITIATIVE_FINAL.replace(
+            "Наблюдаемым признаком станет содержательное сообщение или самостоятельное "
+            "продолжение разговора без вашего предварительного шага. Какое конкретное "
+            "проявление вы сами сочтёте настоящей инициативой?",
+            "Ориентиром станет ваше внутреннее спокойствие. Какое сообщение вы сочтёте "
+            "настоящей инициативой?",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+        )
+        self.assertIn("missing_initiative_reality_criterion", issues)
+
+    def test_rejects_unsupported_psychological_inference(self):
+        text = INITIATIVE_FINAL.replace(
+            "Здесь заметны одновременно импульс к контакту",
+            "Здесь заметен идеализированный образ и импульс к контакту",
+        )
+        issues = validate_final_v6(
+            {"final_text": text},
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+        )
+        self.assertTrue(
+            any(issue.startswith("unsupported_inference:") for issue in issues)
+        )
+
+    def test_rejects_inflected_unsupported_inferences(self):
+        phrases = (
+            "внутренними барьерами",
+            "долгосрочной перспективой",
+            "разрушительным влиянием",
+            "редкими моментами",
+        )
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                text = INITIATIVE_FINAL.replace(
+                    "сильное противоречие",
+                    f"сильное противоречие с {phrase}",
+                )
+                issues = validate_final_v6(
+                    {"final_text": text},
+                    question=INITIATIVE_QUESTION,
+                    cards=INITIATIVE_CARDS,
+                )
+                self.assertTrue(
+                    any(issue.startswith("unsupported_inference:") for issue in issues)
+                )
 
     def test_fallbacks_meet_production_length(self):
         initiative = fallback_v6(INITIATIVE_QUESTION, INITIATIVE_CARDS, "initiative")
