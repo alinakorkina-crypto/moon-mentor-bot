@@ -19,6 +19,12 @@ ROUTE_CONFIG_V6 = {
             "contradictory",
             "unsupported",
         ),
+        "tendency_descriptions": {
+            "symbolic_support": "сочетание символически поддерживает возможность инициативы без гарантии события",
+            "weak_symbolic_support": "символическая поддержка инициативы слабая и недостаточна для уверенного ожидания",
+            "contradictory": "сочетание даёт противоречивую картину без надёжного подтверждения",
+            "unsupported": "сочетание не даёт символической опоры рассчитывать на инициативу",
+        },
         "answer_rule": (
             "Ответьте, насколько сочетание символически поддерживает возможность "
             "самостоятельной инициативы: поддерживает, поддерживает слабо, даёт "
@@ -36,6 +42,12 @@ ROUTE_CONFIG_V6 = {
             "uncertainty_limit": "где проходит личная граница неопределённости",
             "personal_agency": "что остаётся в зоне собственного выбора пользователя",
         },
+        "criteria": {
+            "independent_contact": "самостоятельное сообщение или звонок без предварительного шага пользователя",
+            "sustained_conversation": "самостоятельное содержательное продолжение разговора",
+            "concrete_invitation": "конкретное предложение встретиться или поговорить",
+            "repeated_initiative": "инициатива проявляется больше одного раза",
+        },
     },
     "personal_choice": {
         "positions": (
@@ -44,6 +56,12 @@ ROUTE_CONFIG_V6 = {
             "Какой критерий помогает пользователю определить собственную позицию",
         ),
         "tendencies": ("fits_conditions", "conflicts_conditions", "conditional", "open"),
+        "tendency_descriptions": {
+            "fits_conditions": "вариант символически согласуется с обозначенными условиями пользователя",
+            "conflicts_conditions": "вариант входит в заметное противоречие с обозначенными условиями",
+            "conditional": "ценность варианта зависит от проверяемого условия",
+            "open": "данных недостаточно, и выбор остаётся открытым",
+        },
         "answer_rule": (
             "Не принимайте решение за пользователя. Покажите, склоняется ли символический "
             "рисунок к варианту, отдаляется от него или делает решение условным."
@@ -62,39 +80,35 @@ ROUTE_CONFIG_V6 = {
             "decision_conditions": "какие проверяемые условия нужны для решения",
             "clarity_requirements": "какой конкретики не хватает для выбора",
         },
+        "criteria": {
+            "mutual_initiative": "инициатива и поддержание связи происходят с обеих сторон",
+            "consistency": "наблюдаемая регулярность и устойчивость контакта",
+            "boundary_response": "реакция другой стороны на прямо обозначенное условие или границу",
+            "clear_conditions": "понятные и зафиксированные условия рассматриваемого варианта",
+            "concrete_information": "конкретная информация, которой не хватает для решения",
+        },
     },
 }
 
 
+INTERACTION_CODES_V6 = {
+    "contrast": "карты подчёркивают разные стороны или разнонаправленные силы",
+    "restriction": "одна тема заметно ограничивает или ослабляет другую",
+    "reinforcement": "темы карт усиливают один общий мотив",
+    "correction": "одна карта уточняет и меняет способ чтения остальных",
+}
+
+
 ANALYSIS_SYSTEM_V6 = """
-Вы — аналитик Moon Mentor. Таро используется как символический язык, а не как
-достоверное предсказание или чтение мыслей другого человека. Moon Mentor создаёт
-психологически ориентированное размышление: карты помогают увидеть противоречие,
-ожидание, личный критерий и доступные факты, но не ставят диагнозов.
+Вы — маршрутизатор анализа Moon Mentor. Не пишите толкование и не создавайте
+психологическую версию. Верните только короткий JSON-план по заданной схеме.
 
-Верните строго JSON по заданной схеме. Не пишите финальный текст.
-
-Требования:
-- facts_used: только короткие точные цитаты из вопроса;
-- unknowns_kept_open: мысли, чувства, мотивы, сроки, будущие действия и другие
-  обстоятельства, которых нет в вопросе;
-- card_roles: каждая карта ровно один раз, с переданной позицией;
-- позиции являются аналитическими ракурсами, а не последовательностью событий;
-- central_pattern связывает все карты через противоречие, усиление или коррекцию;
-- одна яркая карта не отменяет две остальные;
-- focus_code выбирается только из кодов, разрешённых для маршрута;
-- supported_observations содержит 2–4 наблюдения. У каждого есть statement,
-  source_type и source_refs. source_type может быть только question или cards;
-- для source_type=question в source_refs используйте точные цитаты из вопроса;
-- для source_type=cards в source_refs используйте только названия переданных карт,
-  а statement не должен выходить за переданные символические темы;
-- не добавляйте психологических понятий, которых нет в вопросе или темах карт;
-- reality_anchor отделяет символическую версию от того, что можно проверить;
-- symbolic_tendency выбирается только из значений, разрешённых для маршрута;
-- direct_answer отвечает на вопрос через степень символической поддержки, но не
-  превращает её в факт будущего или решение за пользователя;
-- observable_criterion проверяется по реальности;
-- reflection_question — один точный нейтральный вопрос.
+- question_quotes: 1–3 точные непрерывные цитаты из вопроса;
+- interaction_code, focus_code, tendency_code и criterion_code выбирайте только
+  из разрешённых значений, переданных в запросе;
+- порядок карт — аналитические ракурсы, а не хронология событий;
+- коды описывают способ чтения, но не будущее, мысли или мотивы другого человека;
+- никаких дополнительных полей и свободных объяснений.
 """.strip()
 
 
@@ -112,9 +126,8 @@ final_text:
 - третий абзац содержит один наблюдаемый критерий и один вопрос в конце;
 - психологический фокус направлен на отношение пользователя к неопределённости,
   ожиданию, границам или условиям выбора только там, где это следует из вопроса;
-- используйте только факты и понятия из facts_used, supported_observations,
-  central_pattern, reality_anchor и переданных ролей карт. Не развивайте собственную
-  психологическую версию поверх проверенного анализа;
+- используйте только точные цитаты вопроса, описания выбранных кодов и переданные
+  Python значения карт. Не добавляйте собственную психологическую версию;
 - нельзя ставить пользователю психологический диагноз или объявлять скрытый мотив;
 - допустима живая условная версия: «это может указывать», «в символике расклада»;
 - нельзя утверждать чужие мысли, чувства, мотивы, намерения, сроки или будущие
@@ -130,53 +143,19 @@ ANALYSIS_SCHEMA_V6 = {
     "type": "object",
     "properties": {
         "question_route": {"type": "string"},
-        "facts_used": {"type": "array", "items": {"type": "string"}},
-        "unknowns_kept_open": {"type": "array", "items": {"type": "string"}},
-        "card_roles": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "card": {"type": "string"},
-                    "position": {"type": "string"},
-                    "contribution": {"type": "string"},
-                },
-                "required": ["card", "position", "contribution"],
-            },
-        },
-        "central_pattern": {"type": "string"},
+        "question_quotes": {"type": "array", "items": {"type": "string"}},
+        "interaction_code": {"type": "string"},
         "focus_code": {"type": "string"},
-        "supported_observations": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "statement": {"type": "string"},
-                    "source_type": {"type": "string"},
-                    "source_refs": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["statement", "source_type", "source_refs"],
-            },
-        },
-        "reality_anchor": {"type": "string"},
-        "symbolic_tendency": {"type": "string"},
-        "direct_answer": {"type": "string"},
-        "observable_criterion": {"type": "string"},
-        "reflection_question": {"type": "string"},
+        "tendency_code": {"type": "string"},
+        "criterion_code": {"type": "string"},
     },
     "required": [
         "question_route",
-        "facts_used",
-        "unknowns_kept_open",
-        "card_roles",
-        "central_pattern",
+        "question_quotes",
+        "interaction_code",
         "focus_code",
-        "supported_observations",
-        "reality_anchor",
-        "symbolic_tendency",
-        "direct_answer",
-        "observable_criterion",
-        "reflection_question",
+        "tendency_code",
+        "criterion_code",
     ],
 }
 
@@ -408,9 +387,17 @@ def build_analysis_prompt_v6(
         for item in prepared
     )
     tendencies = ", ".join(config["tendencies"])
+    interaction_options = "\n".join(
+        f"- {code}: {description}"
+        for code, description in INTERACTION_CODES_V6.items()
+    )
     focus_options = "\n".join(
         f"- {code}: {description}"
         for code, description in config["focuses"].items()
+    )
+    criterion_options = "\n".join(
+        f"- {code}: {description}"
+        for code, description in config["criteria"].items()
     )
     return f"""
 Маршрут вопроса: {route}
@@ -420,11 +407,16 @@ def build_analysis_prompt_v6(
 Карты, аналитические позиции и допустимые символические темы:
 {card_block}
 
-Допустимые symbolic_tendency: {tendencies}
-Правило прямого ответа: {config['answer_rule']}
+Допустимые tendency_code: {tendencies}
+
+Допустимые interaction_code:
+{interaction_options}
 
 Допустимые focus_code:
 {focus_options}
+
+Допустимые criterion_code:
+{criterion_options}
 
 Порядок карт не является временной последовательностью. Не превращайте позиции
 в рассказ «сначала это случилось, потом произошло другое».
@@ -437,10 +429,29 @@ def build_editor_prompt_v6(
     cards: list[dict[str, Any]],
     route: str,
     analysis: dict[str, Any],
+    topic: str = "general",
 ) -> str:
-    focus_description = ROUTE_CONFIG_V6[route]["focuses"].get(
-        analysis.get("focus_code"), ""
-    )
+    config = ROUTE_CONFIG_V6[route]
+    verified_plan = {
+        "question_quotes": analysis["question_quotes"],
+        "interaction": {
+            "code": analysis["interaction_code"],
+            "description": INTERACTION_CODES_V6[analysis["interaction_code"]],
+        },
+        "psychological_focus": {
+            "code": analysis["focus_code"],
+            "description": config["focuses"][analysis["focus_code"]],
+        },
+        "symbolic_tendency": {
+            "code": analysis["tendency_code"],
+            "description": config["tendency_descriptions"][analysis["tendency_code"]],
+        },
+        "observable_criterion": {
+            "code": analysis["criterion_code"],
+            "description": config["criteria"][analysis["criterion_code"]],
+        },
+        "cards": prepare_cards_v6(cards, route, topic),
+    }
     return f"""
 Маршрут: {route}
 Правило ответа для маршрута:
@@ -449,23 +460,17 @@ def build_editor_prompt_v6(
 Редакторское правило для маршрута:
 {ROUTE_CONFIG_V6[route]['editor_rule']}
 
-Единственный разрешённый психологический фокус:
-{analysis.get('focus_code', '')}: {focus_description}
-
 Вопрос:
 {question}
 
-Карты:
-{" — ".join(card["name"] for card in cards)}
-
-Проверенный анализ:
-{json.dumps(analysis, ensure_ascii=False, indent=2)}
+Проверенный план и единственные допустимые источники:
+{json.dumps(verified_plan, ensure_ascii=False, indent=2)}
 
 Эталон тона и логики для этого маршрута:
 {STYLE_EXAMPLES_V6[route]}
 
 Не копируйте факты и карты из эталона. Напишите ответ только для текущего вопроса.
-Любое новое психологическое объяснение, которого нет в проверенном анализе, запрещено.
+Любое новое психологическое объяснение, которого нет в проверенном плане, запрещено.
 Верните только JSON.
 """.strip()
 
@@ -596,110 +601,42 @@ def validate_analysis_v6(
     issues: list[str] = []
     string_fields = (
         "question_route",
-        "central_pattern",
+        "interaction_code",
         "focus_code",
-        "reality_anchor",
-        "symbolic_tendency",
-        "direct_answer",
-        "observable_criterion",
-        "reflection_question",
+        "tendency_code",
+        "criterion_code",
     )
     for field in string_fields:
         if not isinstance(payload.get(field), str) or not payload[field].strip():
             issues.append(f"missing:{field}")
 
+    expected_fields = set(ANALYSIS_SCHEMA_V6["required"])
+    unexpected_fields = set(payload) - expected_fields
+    if unexpected_fields:
+        issues.append("unexpected_analysis_fields:" + "|".join(sorted(unexpected_fields)))
     if payload.get("question_route") != route:
         issues.append("route_mismatch")
-    if payload.get("symbolic_tendency") not in ROUTE_CONFIG_V6[route]["tendencies"]:
+    if payload.get("interaction_code") not in INTERACTION_CODES_V6:
+        issues.append("invalid_interaction_code")
+    if payload.get("tendency_code") not in ROUTE_CONFIG_V6[route]["tendencies"]:
         issues.append("invalid_tendency")
     if payload.get("focus_code") not in ROUTE_CONFIG_V6[route]["focuses"]:
         issues.append("invalid_focus_code")
+    if payload.get("criterion_code") not in ROUTE_CONFIG_V6[route]["criteria"]:
+        issues.append("invalid_criterion_code")
 
-    facts = payload.get("facts_used")
-    if not isinstance(facts, list) or not facts:
-        issues.append("missing:facts_used")
-    else:
-        normalized_question = normalize_text_v6(question)
-        if any(
-            not isinstance(fact, str)
-            or not fact.strip()
-            or normalize_text_v6(fact) not in normalized_question
-            for fact in facts
-        ):
-            issues.append("unsupported_fact")
-
-    unknowns = payload.get("unknowns_kept_open")
-    if not isinstance(unknowns, list) or not unknowns:
-        issues.append("missing:unknowns_kept_open")
-
-    observations = payload.get("supported_observations")
+    quotes = payload.get("question_quotes")
     normalized_question = normalize_text_v6(question)
-    card_names = {card["name"] for card in cards}
-    if not isinstance(observations, list) or not 2 <= len(observations) <= 4:
-        issues.append("invalid:supported_observations")
+    if not isinstance(quotes, list) or not 1 <= len(quotes) <= 3:
+        issues.append("invalid:question_quotes")
     else:
-        for item in observations:
-            if (
-                not isinstance(item, dict)
-                or not isinstance(item.get("statement"), str)
-                or not item["statement"].strip()
-                or item.get("source_type") not in {"question", "cards"}
-                or not isinstance(item.get("source_refs"), list)
-                or not item["source_refs"]
-                or any(not isinstance(ref, str) or not ref.strip() for ref in item["source_refs"])
-            ):
-                issues.append("invalid:supported_observation")
-                continue
-            if item["source_type"] == "question" and any(
-                normalize_text_v6(ref) not in normalized_question
-                for ref in item["source_refs"]
-            ):
-                issues.append("unsupported_observation_source")
-            if item["source_type"] == "cards" and any(
-                ref not in card_names for ref in item["source_refs"]
-            ):
-                issues.append("unsupported_observation_source")
-
-    roles = payload.get("card_roles")
-    expected_names = [card["name"] for card in cards]
-    expected_positions = list(ROUTE_CONFIG_V6[route]["positions"][:len(cards)])
-    if not isinstance(roles, list):
-        issues.append("missing:card_roles")
-    else:
-        role_names = [
-            item.get("card") for item in roles if isinstance(item, dict)
-        ]
-        role_positions = [
-            item.get("position") for item in roles if isinstance(item, dict)
-        ]
-        if len(role_names) != len(expected_names) or set(role_names) != set(expected_names):
-            issues.append("card_roles_mismatch")
-        if role_positions != expected_positions:
-            issues.append("card_positions_mismatch")
         if any(
-            not isinstance(item, dict)
-            or not isinstance(item.get("contribution"), str)
-            or not item["contribution"].strip()
-            for item in roles
+            not isinstance(quote, str)
+            or not quote.strip()
+            or normalize_text_v6(quote) not in normalized_question
+            for quote in quotes
         ):
-            issues.append("invalid_card_role")
-
-    pattern = payload.get("central_pattern")
-    if isinstance(pattern, str):
-        missing = missing_cards_v6(pattern, cards)
-        if missing:
-            issues.append("analysis_missing_cards:" + "|".join(missing))
-
-    reflection = payload.get("reflection_question")
-    if isinstance(reflection, str) and reflection.strip() and not reflection.rstrip().endswith("?"):
-        issues.append("reflection_not_question")
-    unsupported_markers = unsupported_inference_markers_v6(
-        json.dumps(payload, ensure_ascii=False),
-        question=question,
-        cards=cards,
-    )
-    if unsupported_markers:
-        issues.append("analysis_unsupported_inference:" + "|".join(unsupported_markers))
+            issues.append("unsupported_question_quote")
     return list(dict.fromkeys(issues))
 
 
@@ -940,7 +877,9 @@ def generate_reading_v6(
             "rejected_analysis": analysis,
         }
 
-    editor_reply = editor_call(build_editor_prompt_v6(question, cards, route, analysis))
+    editor_reply = editor_call(
+        build_editor_prompt_v6(question, cards, route, analysis, topic)
+    )
     editor_raw, editor_diagnostics = unpack_reply_v6(editor_reply)
     final_payload, final_issues = parse_json_v6(editor_raw)
     final_issues = decorate_transport_issues_v6(final_issues, editor_diagnostics)
