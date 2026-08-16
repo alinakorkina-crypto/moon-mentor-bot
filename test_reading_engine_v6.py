@@ -141,6 +141,47 @@ CHOICE_FINAL = (
 )
 
 
+V64_INITIATIVE_AI = (
+    "В символике расклада возможность проявления инициативы даёт противоречивую "
+    "картину, не создавая надёжной опоры для ваших ожиданий. Психологический фокус "
+    "ситуации смещается с попытки угадать чужие шаги на то, где проходит ваша личная "
+    "граница неопределённости. Вопрос о том, выйдет ли человек первым на контакт, "
+    "отражает внутреннее напряжение между желанием ясности и вынужденным ожиданием.\n\n"
+    "Колесница указывает на сильный импульс к движению и попытку сдвинуть ситуацию "
+    "с места, однако Башня вносит резкое противоречие, которое не позволяет трактовать "
+    "этот порыв как надёжный. Звезда переносит внимание на далёкую перспективу и "
+    "сохранение надежды, требуя отличать желаемый образ от реальных шагов. Эти карты "
+    "подчёркивают разнонаправленные силы, где стремление к действию сталкивается с "
+    "непреодолимым барьером.\n\n"
+    "Наблюдаемым критерием здесь станет самостоятельное сообщение или звонок без "
+    "предварительного шага с вашей стороны. Какое именно проявление вы сочтёте реальным "
+    "подтверждением интереса и сколько времени вы готовы посвятить этому ожиданию?"
+)
+
+
+V64_CHOICE_AI = (
+    "По символике расклада решение выглядит условным: ценность теплого общения заметна, "
+    "но ответ на вопрос, стоит ли продолжать этот контакт, напрямую зависит от того, "
+    "насколько вам подходит цена долгого молчания.\n\n"
+    "Карты Солнце и Отшельник подчёркивают разные стороны этой связи: заметная ценность "
+    "тёплых и открытых эпизодов общения сталкивается с дистанцией и паузами, когда "
+    "человек пропадает. Карта Умеренность объединяет эти разнонаправленные силы, "
+    "предлагая оценить меру и формат связи, а не приспосабливаться к неудобной динамике.\n\n"
+    "Критерием для вашего выбора станет наблюдаемая регулярность и устойчивость контакта, "
+    "а не только редкие яркие моменты. Насколько комфортно для вас находиться в ожидании, "
+    "пока длится очередная пауза?"
+)
+
+
+V65_IMPROVED_CHOICE = V64_CHOICE_AI.replace(
+    "редкие яркие моменты",
+    "отдельные тёплые эпизоды",
+).replace(
+    "Насколько комфортно для вас находиться в ожидании, пока длится очередная пауза?",
+    "Какая наблюдаемая регулярность контакта необходима вам для продолжения этой связи?",
+)
+
+
 class RoutingTests(unittest.TestCase):
     def test_initiative_route_has_priority_over_choice_wording(self):
         self.assertEqual(
@@ -197,6 +238,9 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Колесница", prompt)
         self.assertIn("evidence_threshold", prompt)
         self.assertIn("independent_contact", prompt)
+        self.assertIn('"reflection_angle"', prompt)
+        self.assertIn('"reflection_question_guide"', prompt)
+        self.assertNotIn('"psychological_focus"', prompt)
         for prepared_card in prepare_cards_v6(INITIATIVE_CARDS, "initiative"):
             self.assertIn(prepared_card["position"], prompt)
             self.assertIn(prepared_card["meaning"], prompt)
@@ -206,6 +250,10 @@ class PromptTests(unittest.TestCase):
         )
         self.assertIn(
             "самостоятельное сообщение или звонок без предварительного шага пользователя",
+            prompt,
+        )
+        self.assertIn(
+            "Не называйте его подтверждением интереса или чувств",
             prompt,
         )
 
@@ -248,6 +296,8 @@ class PromptTests(unittest.TestCase):
     def test_system_prompts_split_analysis_from_prose(self):
         self.assertIn("Не пишите толкование", ANALYSIS_SYSTEM_V6)
         self.assertIn("ровно 3 коротких абзаца", EDITOR_SYSTEM_V6)
+        self.assertIn("цель 105–140 слов", EDITOR_SYSTEM_V6)
+        self.assertNotIn("психологический фокус направлен", EDITOR_SYSTEM_V6)
 
     def test_card_positions_are_route_specific(self):
         initiative = prepare_cards_v6(INITIATIVE_CARDS, "initiative")
@@ -434,6 +484,56 @@ class FinalValidationTests(unittest.TestCase):
                 {"final_text": CHOICE_FINAL},
                 question=CHOICE_QUESTION,
                 cards=CHOICE_CARDS,
+            ),
+            [],
+        )
+
+    def test_rejects_real_v64_initiative_editor_expansions(self):
+        issues = validate_final_v6(
+            {"final_text": V64_INITIATIVE_AI},
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            route="initiative",
+        )
+        inference_issue = next(
+            issue for issue in issues if issue.startswith("unsupported_inference:")
+        )
+        for marker in (
+            "psychological_focus_meta",
+            "inner_tension",
+            "forced_waiting",
+            "distant_perspective",
+            "desired_image",
+            "insurmountable_barrier",
+            "interest_confirmation",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, inference_issue)
+
+    def test_rejects_real_v64_choice_editor_roughness(self):
+        issues = validate_final_v6(
+            {"final_text": V64_CHOICE_AI},
+            question=CHOICE_QUESTION,
+            cards=CHOICE_CARDS,
+            route="personal_choice",
+            topic="love",
+        )
+        self.assertIn("adaptation_or_user_blame", issues)
+        self.assertTrue(
+            any("rare_moments" in issue for issue in issues),
+            issues,
+        )
+
+    def test_accepts_grounded_97_word_relationship_answer(self):
+        self.assertGreaterEqual(count_words_v6(V65_IMPROVED_CHOICE), 95)
+        self.assertLess(count_words_v6(V65_IMPROVED_CHOICE), 100)
+        self.assertEqual(
+            validate_final_v6(
+                {"final_text": V65_IMPROVED_CHOICE},
+                question=CHOICE_QUESTION,
+                cards=CHOICE_CARDS,
+                route="personal_choice",
+                topic="love",
             ),
             [],
         )
