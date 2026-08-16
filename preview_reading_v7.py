@@ -1,4 +1,4 @@
-"""Two-route control preview for Reading Engine v7."""
+"""Two-route control preview for Reading Engine v7.1."""
 
 import json
 
@@ -78,7 +78,7 @@ def diagnostic(label: str, value) -> str:
 
 
 def main() -> None:
-    print("\n===== READING ENGINE V7: INTERPRETIVE-BRIEF PREVIEW =====\n")
+    print("\n===== READING ENGINE V7.1: QUESTION-ANCHORED PREVIEW =====\n")
     for index, scenario in enumerate(SCENARIOS, start=1):
         calls = {"analysis": 0, "editor": 0}
 
@@ -126,4 +126,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
