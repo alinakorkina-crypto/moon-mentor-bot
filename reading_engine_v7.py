@@ -1,10 +1,11 @@
-"""Reading Engine v7: interpretive brief followed by a natural-language editor.
+"""Reading Engine v7.1: evidence-anchored brief plus natural-language editor.
 
 This experiment deliberately keeps the two-call architecture while changing the
 job of the first call.  The analyst now produces a small, meaningful reading
-brief instead of reducing the spread to classification codes.  Python validates
-transport, structure and safety; stylistic imperfections are warnings and do
-not automatically replace an otherwise useful AI answer with a generic fallback.
+brief instead of reducing the spread to classification codes.  In v7.1 the
+reflection is anchored to an exact phrase from the user's question and the model
+may not invent a psychological explanation.  Python validates transport,
+structure and safety; stylistic imperfections remain warnings.
 """
 
 from __future__ import annotations
@@ -40,19 +41,20 @@ ANALYSIS_SYSTEM_V7 = """
 - question_route — переданный маршрут;
 - direct_answer — осторожный, но настоящий ответ на вопрос. Используй «скорее»,
   «возможно», «похоже», «карты не дают уверенного указания», если это уместно;
-- card_roles — вклад каждой карты именно в этот вопрос, в исходном порядке;
+- card_roles — название каждой карты и только её функция в сочетании: opens,
+  limits, reframes, balances или reinforces. Не переписывай значение карты;
 - central_dynamic — как карты взаимодействуют: что усиливается, чему
   противоречит или что меняет общий рисунок;
-- psychological_reflection — одна мысль о выборе, ожидании, границах или
-  неопределённости пользователя, только если она следует из самого вопроса;
-- unknowns — что нельзя установить по картам;
-- reality_anchor — какой факт или действие можно будет увидеть в реальности;
-- closing_question — один точный вопрос для размышления.
+- question_quote — одна точная непрерывная цитата из вопроса пользователя;
+- reflection_question — один вопрос для размышления, основанный только на этой
+  цитате. Формулируй вопрос, а не психологическое утверждение.
 
-Не пиши готовый расклад. Не своди анализ к кодам. Не приписывай другому человеку
-мысли, чувства, мотивы, страхи, намерения или будущие действия. Не обещай событие
-и не принимай решение за пользователя. Допустимо описывать вероятность и одну
-символическую версию без гарантии.
+Не пиши готовый расклад. Не приписывай пользователю стремление форсировать
+события, тревогу, перенос ответственности, пассивное ожидание, попытку изменить
+другого или иное внутреннее состояние, которого нет в точной цитате. Не
+приписывай другому человеку мысли, чувства, мотивы, страхи, намерения или будущие
+действия. Не обещай событие и не принимай решение за пользователя. Допустимо
+описывать вероятность и одну символическую версию без гарантии.
 """.strip()
 
 
@@ -67,8 +69,9 @@ EDITOR_SYSTEM_V7 = """
    Можно говорить «скорее», «возможно», «похоже», «возможность остаётся».
 2. Покажи, как все карты работают вместе. Не делай три словарные справки и не
    превращай их порядок в достоверную хронологию событий.
-3. Мягко переведи расклад к психологическому размышлению пользователя и закончи
-   одним точным вопросом. Не давай команд и не решай за человека.
+3. Мягко переведи расклад к вопросу пользователя, используя только переданную
+   цитату и reflection_question. Не объявляй внутреннее состояние фактом.
+   Закончи одним точным вопросом, не давай команд и не решай за человека.
 
 Пиши тепло, легко и естественно, как хороший собеседник, а не как валидатор или
 официальный отчёт. Не используй слова «маршрут», «критерий», «проверяемое
@@ -80,7 +83,8 @@ EDITOR_SYSTEM_V7 = """
 планирует или обязательно совершит действие. Нельзя придумывать причины его
 поведения, ставить диагнозы, обещать сроки и исходы, советовать манипуляцию или
 принимать решение за пользователя. Не называй человека партнёром, если это не
-сказано в вопросе. Используй только данные вопроса, карт и проверенного брифа.
+сказано в вопросе. Не предлагай принять неудобный формат как данность. Используй
+только данные вопроса, исходные значения карт и проверенный бриф.
 """.strip()
 
 
@@ -95,26 +99,22 @@ ANALYSIS_SCHEMA_V7 = {
                 "type": "object",
                 "properties": {
                     "card": {"type": "string"},
-                    "contribution": {"type": "string"},
+                    "function": {"type": "string"},
                 },
-                "required": ["card", "contribution"],
+                "required": ["card", "function"],
             },
         },
         "central_dynamic": {"type": "string"},
-        "psychological_reflection": {"type": "string"},
-        "unknowns": {"type": "array", "items": {"type": "string"}},
-        "reality_anchor": {"type": "string"},
-        "closing_question": {"type": "string"},
+        "question_quote": {"type": "string"},
+        "reflection_question": {"type": "string"},
     },
     "required": [
         "question_route",
         "direct_answer",
         "card_roles",
         "central_dynamic",
-        "psychological_reflection",
-        "unknowns",
-        "reality_anchor",
-        "closing_question",
+        "question_quote",
+        "reflection_question",
     ],
 }
 
@@ -135,10 +135,10 @@ STYLE_EXAMPLES_V7 = {
 определившийся шаг. Скорее ситуация остаётся открытой: импульс к проявлению
 возникает, однако пока не получает свободного развития.
 
-Маг усиливает тему действия и первого шага, Повешенный останавливает прямое
-движение, а Суд возвращает внимание к тому, что между людьми ещё не получило
-ясного завершения. Вместе они говорят не о гарантированном событии, а о связи,
-в которой возможность возобновления соседствует с паузой.
+Маг усиливает тему действия и первого шага, Повешенный ограничивает прямое
+движение, а Суд сохраняет возможность вернуться к теме. Вместе они говорят не о
+гарантированном событии, а о противоречии между импульсом и отсутствием ясного
+действия.
 
 При этом ожидание чужого шага тоже становится частью этой истории. Какое
 конкретное действие ты сама сочтёшь настоящей инициативой, а не случайным знаком?
@@ -155,8 +155,8 @@ STYLE_EXAMPLES_V7 = {
 они показывают разницу между приятными моментами и устойчивой взаимностью — одно
 не всегда означает другое.
 
-Здесь нет готового решения за тебя, но есть точка для честного сравнения: что
-этот контакт даёт и сколько сил требует. Какая взаимность нужна тебе, чтобы
+Здесь нет готового решения за тебя, но есть точка для честного сравнения: тёплые
+моменты и наблюдаемая взаимность в контакте. Какая взаимность нужна тебе, чтобы
 продолжение этой связи действительно ощущалось ценным?
 """.strip(),
     "personal_choice_career": """
@@ -192,6 +192,66 @@ STYLE_EXAMPLES_V7 = {
 }
 
 
+CARD_FUNCTIONS_V7 = {"opens", "limits", "reframes", "balances", "reinforces"}
+
+
+def route_guardrails_v7(route: str, topic: str) -> str:
+    if route == "initiative":
+        return (
+            "Не приписывай пользователю желание ускорить или форсировать события. "
+            "Не придумывай внешние обстоятельства, внутренние барьеры, крушение "
+            "планов, быстрый или далёкий срок контакта. Не ставь перед выбором "
+            "«написать самой или отпустить». Разрешённый психологический ракурс — "
+            "только различие между возможностью контакта и тем действием, которое "
+            "пользователь сочтёт инициативой."
+        )
+    if normalize_topic_v6(topic) == "love":
+        return (
+            "Не предлагай принять паузы или неудобный ритм как данность. Не называй "
+            "их неизбежными или неотъемлемыми, не утверждай тревогу, ранимость, "
+            "границы выносливости или попытку переделать другого. Разрешённый "
+            "психологический ракурс — потребности пользователя во взаимности, "
+            "регулярности и подходящем формате контакта."
+        )
+    if normalize_topic_v6(topic) == "career":
+        return (
+            "Не принимай карьерное решение за пользователя. Связывай размышление "
+            "только с указанными в вопросе условиями и конкретикой роли."
+        )
+    return (
+        "Не придумывай внутреннее состояние пользователя. Связывай размышление "
+        "только с точной цитатой из вопроса и наблюдаемыми условиями выбора."
+    )
+
+
+def fixed_unknowns_v7(route: str, topic: str) -> list[str]:
+    if route == "initiative":
+        return [
+            "мысли, чувства и намерения другого человека",
+            "срок и сам факт будущего контакта",
+            "причины отсутствия инициативы",
+        ]
+    if normalize_topic_v6(topic) == "love":
+        return [
+            "причины поведения другого человека",
+            "изменится ли формат контакта в будущем",
+        ]
+    return ["будущий исход решения", "обстоятельства, которых нет в вопросе"]
+
+
+def fixed_reality_anchor_v7(route: str, topic: str) -> str:
+    if route == "initiative":
+        return (
+            "самостоятельное содержательное сообщение, звонок или продолжение "
+            "разговора без предварительного шага пользователя"
+        )
+    if normalize_topic_v6(topic) == "love":
+        return "наблюдаемая взаимность, инициатива и регулярность контакта"
+    if normalize_topic_v6(topic) == "career":
+        return "конкретные обязанности, полномочия, подчинение и условия роли"
+    return "конкретный факт или условие, которое можно проверить в реальности"
+
+
 HARD_SAFETY_PATTERNS_V7 = (
     ("mind_reading", r"\b(?:он|она|человек)\s+(?:на самом деле\s+)?(?:думает|чувствует|хочет|боится|планирует|решил[аи]?)\b"),
     ("certain_future", r"\b(?:он|она|человек)\s+(?:точно|обязательно|непременно)\s+(?:напишет|позвонит|верн[её]тся|проявится|выйдет)\b"),
@@ -199,6 +259,29 @@ HARD_SAFETY_PATTERNS_V7 = (
     ("diagnosis", r"\b(?:у вас|у тебя)\s+(?:травма|зависимость|созависимость|контрзависимость|расстройство)\b"),
     ("manipulation", r"\b(?:спровоцируй|вызови ревность|заставь его|манипулируй)\b"),
     ("decision_for_user", r"(?:^|[.!?]\s+)(?:вам|тебе)\s+(?:нужно|необходимо|следует)\s+(?:согласиться|отказаться|продолжать|прекратить|уйти|остаться)\b"),
+    ("unsupported:forcing_events", r"\b(?:форсиров\w*|ускорить)\s+(?:событи\w*|ситуаци\w*)\b"),
+    ("unsupported:inner_barriers", r"\bвнутренн\w*\s+барьер\w*\b"),
+    ("unsupported:external_circumstances", r"\bвнешн\w*\s+обстоятельств\w*\b"),
+    ("unsupported:long_term", r"\bдолгосрочн\w*\b"),
+    ("unsupported:plans_collapse", r"\b(?:крушени\w*|разрушени\w*)\s+(?:этих\s+)?план\w*\b"),
+    ("unsupported:avoid_uncertainty", r"\bизбежа?\w*\s+неопредел[её]нност\w*\b"),
+    ("unsupported:shift_responsibility", r"\b(?:переклад\w*|перелож\w*)\s+ответственност\w*\b"),
+    ("unsupported:passive_waiting", r"\bпассивн\w*\s+ожидани\w*\b"),
+    ("unsupported:endurance", r"\bграниц\w*\s+выносливост\w*\b"),
+    ("unsupported:strong_anxiety", r"\bсильн\w*\s+тревог\w*\b"),
+    ("unsupported:integral_pattern", r"\bнеотъемлем\w*\s+част\w*\b"),
+    ("unsupported:inevitable", r"\bнеизбежн\w*\b"),
+    ("unsupported:self_harm_metaphor", r"\bне\s+ранить\s+себя\b"),
+    ("unsupported:change_other", r"\bпеределать\s+чуж\w*\s+(?:темп|ритм)\b"),
+    ("unsupported:accept_as_given", r"\bпринять\w*(?:\s+\w+){0,5}\s+как\s+данност\w*\b"),
+    ("unsupported:withdrawal_cause", r"\bуход\w*\s+в\s+себя\b"),
+    ("unsupported:waiting_drains", r"\bожидани\w*(?:\s+\w+){0,4}\s+забира\w*(?:\s+\w+){0,2}\s+сил\w*\b"),
+    ("unsupported:user_impulse", r"\bваш\w*(?:\s+\w+){0,2}\s+внутренн\w*\s+импульс\w*\b"),
+    ("unsupported:hurry_desire", r"\bжелани\w*\s+поскорее\b"),
+    ("unsupported:expectations_vs_reality", r"\b(?:ожидани\w*(?:\s+\w+){0,4}\s+сталкива\w*|столкновени\w*(?:\s+\w+){0,4}\s+ожидани\w*)(?:\s+\w+){0,3}\s+реальност\w*\b"),
+    ("unsupported:quick_contact", r"\bбыстр\w*(?:\s+\w+){0,2}\s+(?:контакт|развити\w*)(?:\s+\w+){0,3}\s+маловероят\w*\b"),
+    ("unsupported:beautiful_dreams", r"\bкрасив\w*\s+мечт\w*\b"),
+    ("unsupported:waiting_anxiety", r"\bожидани\w*(?:\s+\w+){0,5}\s+тревог\w*\b"),
 )
 
 
@@ -210,6 +293,8 @@ STYLE_WARNING_PATTERNS_V7 = (
     ("bureaucratic:objective_guide", r"\bобъективн\w*\s+ориентир\w*\b"),
     ("meta:psychological_focus", r"\bпсихологическ\w*\s+фокус\w*\b"),
     ("report_language", r"\bпроверяем\w*\s+подтверждени\w*\b"),
+    ("therapy_style:ecological", r"\bэкологичн\w*\b"),
+    ("therapy_style:safe", r"\b(?:уверенн\w*\s+и\s+безопасн\w*|чувствовать\s+себя\s+безопасн\w*)\b"),
 )
 
 
@@ -241,16 +326,21 @@ def build_analysis_prompt_v7(
 Тема: {normalize_topic_v6(topic)}
 Правило маршрута: {route_rule}
 
+Ограничения именно для этого маршрута:
+{route_guardrails_v7(route, topic)}
+
 Вопрос пользователя:
 {question}
 
 Карты, их аналитические позиции и допустимые значения:
 {card_block}
 
-Собери содержательный бриф именно для этого вопроса. Каждая карта должна получить
-отдельный вклад, а central_dynamic должен связать все карты в один рисунок.
-Психологическое размышление относится только к опыту и выбору пользователя, но не
-объясняет внутренний мир другого человека. Верни только JSON.
+Собери содержательный бриф именно для этого вопроса. Для каждой карты выбери
+только функцию из списка opens, limits, reframes, balances, reinforces. Не
+создавай новое значение карты: редактор получит исходные значения отдельно.
+central_dynamic связывает карты, но не вводит новые события или психологические
+причины. question_quote должна дословно встречаться в вопросе пользователя, а
+reflection_question может опираться только на неё. Верни только JSON.
 """.strip()
 
 
@@ -266,6 +356,9 @@ def build_editor_prompt_v7(
         "topic": normalize_topic_v6(topic),
         "cards": prepare_cards_v6(cards, route, topic),
         "brief": analysis,
+        "unknowns_to_keep_open": fixed_unknowns_v7(route, topic),
+        "reality_anchor": fixed_reality_anchor_v7(route, topic),
+        "route_guardrails": route_guardrails_v7(route, topic),
     }
     return f"""
 Материалы текущего расклада:
@@ -285,19 +378,12 @@ def combined_analysis_text_v7(payload: dict[str, Any]) -> str:
     for field in (
         "direct_answer",
         "central_dynamic",
-        "psychological_reflection",
-        "reality_anchor",
-        "closing_question",
+        "question_quote",
+        "reflection_question",
     ):
         value = payload.get(field)
         if isinstance(value, str):
             parts.append(value)
-    for value in payload.get("unknowns") or []:
-        if isinstance(value, str):
-            parts.append(value)
-    for item in payload.get("card_roles") or []:
-        if isinstance(item, dict) and isinstance(item.get("contribution"), str):
-            parts.append(item["contribution"])
     return " ".join(parts)
 
 
@@ -333,6 +419,7 @@ def style_warnings_v7(text: str, question: str) -> list[str]:
 def validate_analysis_v7(
     payload: dict[str, Any],
     *,
+    question: str,
     cards: list[dict[str, Any]],
     route: str,
 ) -> list[str]:
@@ -347,18 +434,11 @@ def validate_analysis_v7(
     for field in (
         "direct_answer",
         "central_dynamic",
-        "psychological_reflection",
-        "reality_anchor",
-        "closing_question",
+        "question_quote",
+        "reflection_question",
     ):
         if not isinstance(payload.get(field), str) or not payload[field].strip():
             issues.append(f"missing:{field}")
-
-    unknowns = payload.get("unknowns")
-    if not isinstance(unknowns, list) or not unknowns or any(
-        not isinstance(item, str) or not item.strip() for item in unknowns
-    ):
-        issues.append("invalid:unknowns")
 
     roles = payload.get("card_roles")
     expected_names = [card["name"] for card in cards]
@@ -371,13 +451,17 @@ def validate_analysis_v7(
                 issues.append("invalid:card_role")
                 continue
             actual_names.append(item.get("card"))
-            if not isinstance(item.get("contribution"), str) or not item["contribution"].strip():
-                issues.append("missing:card_contribution")
+            if item.get("function") not in CARD_FUNCTIONS_V7:
+                issues.append("invalid:card_function")
         if actual_names != expected_names:
             issues.append("analysis_card_order_or_names")
 
-    if isinstance(payload.get("closing_question"), str) and not payload[
-        "closing_question"
+    quote = payload.get("question_quote")
+    if isinstance(quote, str) and normalize_text_v6(quote) not in normalize_text_v6(question):
+        issues.append("unsupported_question_quote")
+
+    if isinstance(payload.get("reflection_question"), str) and not payload[
+        "reflection_question"
     ].rstrip().endswith("?"):
         issues.append("analysis_missing_question")
 
@@ -398,11 +482,8 @@ def validate_final_v7(
     text = normalize_final_layout_v6(text)
     issues = hard_safety_issues_v7(text)
     words = count_words_v6(text)
-    paragraphs = split_paragraphs_v6(text)
     if words < 70 or words > 240:
         issues.append(f"extreme_word_count:{words}")
-    if len(paragraphs) < 2 or len(paragraphs) > 4:
-        issues.append(f"extreme_paragraph_count:{len(paragraphs)}")
     if not text.rstrip().endswith("?"):
         issues.append("missing_final_question")
     missing = missing_cards_v6(text, cards)
@@ -447,7 +528,14 @@ def generate_reading_v7(
     analysis, issues = parse_json_v6(analysis_raw)
     issues = decorate_transport_issues_v6(issues, analysis_diagnostics)
     if analysis is not None:
-        issues.extend(validate_analysis_v7(analysis, cards=cards, route=route))
+        issues.extend(
+            validate_analysis_v7(
+                analysis,
+                question=question,
+                cards=cards,
+                route=route,
+            )
+        )
     if analysis is None or issues:
         return {
             "text": fallback_v7(question, cards, route),
@@ -514,4 +602,3 @@ def generate_reading_v7(
 count_words_v7 = count_words_v6
 split_paragraphs_v7 = split_paragraphs_v6
 clean_stars_v7 = clean_stars_v6
-
