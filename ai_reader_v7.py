@@ -1,4 +1,4 @@
-"""Two-pass Gemini caller for Reading Engine v7."""
+"""Two-pass Gemini caller for Reading Engine v7.1."""
 
 from typing import Any
 
@@ -18,7 +18,7 @@ MODEL_NAME = "gemini-3.5-flash"
 ANALYSIS_CONFIG = types.GenerateContentConfig(
     system_instruction=ANALYSIS_SYSTEM_V7,
     thinking_config=types.ThinkingConfig(thinking_level="low"),
-    temperature=0.25,
+    temperature=0.15,
     max_output_tokens=4096,
     response_mime_type="application/json",
     response_schema=ANALYSIS_SCHEMA_V7,
@@ -92,4 +92,3 @@ def ask_gemini_editor_v7(prompt: str) -> dict[str, Any]:
     except Exception as error:
         print(f"Gemini v7 editor error: {error}")
         return {"text": None, "finish_reason": "ERROR", "usage": None}
-
