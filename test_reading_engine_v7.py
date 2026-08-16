@@ -60,30 +60,23 @@ def valid_analysis(
             "card_roles": [
                 {
                     "card": "Колесница",
-                    "contribution": "Поддерживает тему движения и первого шага.",
+                    "function": "opens",
                 },
                 {
                     "card": "Башня",
-                    "contribution": "Нарушает прямое развитие этого импульса.",
+                    "function": "limits",
                 },
                 {
                     "card": "Звезда",
-                    "contribution": "Сохраняет надежду, не подтверждая действие.",
+                    "function": "reframes",
                 },
             ],
             "central_dynamic": (
                 "Импульс к движению сталкивается с сильным противоречием, после "
                 "которого возможность остаётся, но не становится фактом."
             ),
-            "psychological_reflection": (
-                "Постоянные мысли о человеке делают ожидание его шага заметной "
-                "частью вопроса."
-            ),
-            "unknowns": [
-                "Нельзя установить намерения человека и момент возможного контакта."
-            ],
-            "reality_anchor": "Самостоятельное содержательное сообщение или звонок.",
-            "closing_question": (
+            "question_quote": "думаю постоянно",
+            "reflection_question": (
                 "Какое действие вы сами сочтёте настоящей инициативой?"
             ),
         }
@@ -94,23 +87,16 @@ def valid_analysis(
             "потребности пользователя во взаимности и устойчивости."
         ),
         "card_roles": [
-            {"card": "Солнце", "contribution": "Подчёркивает теплоту общения."},
-            {"card": "Отшельник", "contribution": "Добавляет дистанцию и паузы."},
-            {
-                "card": "Умеренность",
-                "contribution": "Связывает контраст через подходящую меру участия.",
-            },
+            {"card": "Солнце", "function": "opens"},
+            {"card": "Отшельник", "function": "limits"},
+            {"card": "Умеренность", "function": "balances"},
         ],
         "central_dynamic": (
             "Теплота контакта сосуществует с прерывистостью, поэтому качество "
             "эпизодов не равно устойчивости связи."
         ),
-        "psychological_reflection": (
-            "Выбор связан с тем, какой ритм и взаимность нужны пользователю."
-        ),
-        "unknowns": ["Нельзя установить причины чужих пауз."],
-        "reality_anchor": "Взаимная инициатива и регулярность общения.",
-        "closing_question": (
+        "question_quote": "он надолго пропадает",
+        "reflection_question": (
             "Какая взаимность нужна вам, чтобы продолжение ощущалось ценным?"
         ),
     }
@@ -141,8 +127,10 @@ class PromptTests(unittest.TestCase):
         required = set(ANALYSIS_SCHEMA_V7["required"])
         self.assertIn("direct_answer", required)
         self.assertIn("card_roles", required)
-        self.assertIn("psychological_reflection", required)
-        self.assertIn("unknowns", required)
+        self.assertIn("question_quote", required)
+        self.assertIn("reflection_question", required)
+        self.assertNotIn("psychological_reflection", required)
+        self.assertNotIn("unknowns", required)
 
     def test_analysis_prompt_contains_question_cards_positions_and_meanings(self):
         prompt = build_analysis_prompt_v7(
@@ -174,6 +162,8 @@ class PromptTests(unittest.TestCase):
         self.assertIn("Колесница", prompt)
         self.assertIn("настоящей инициативой", prompt)
         self.assertIn("Эталон уровня теплоты", prompt)
+        self.assertIn("unknowns_to_keep_open", prompt)
+        self.assertIn("Не приписывай пользователю желание ускорить", prompt)
 
 
 class AnalysisValidationTests(unittest.TestCase):
@@ -181,6 +171,7 @@ class AnalysisValidationTests(unittest.TestCase):
         self.assertEqual(
             validate_analysis_v7(
                 valid_analysis(),
+                question=INITIATIVE_QUESTION,
                 cards=INITIATIVE_CARDS,
                 route="initiative",
             ),
@@ -192,26 +183,40 @@ class AnalysisValidationTests(unittest.TestCase):
         payload["card_roles"][1]["card"] = "Луна"
         issues = validate_analysis_v7(
             payload,
+            question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
         self.assertIn("analysis_card_order_or_names", issues)
 
-    def test_missing_unknowns_is_rejected(self):
+    def test_unsupported_question_quote_is_rejected(self):
         payload = valid_analysis()
-        payload["unknowns"] = []
+        payload["question_quote"] = "я очень тревожусь"
         issues = validate_analysis_v7(
             payload,
+            question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
-        self.assertIn("invalid:unknowns", issues)
+        self.assertIn("unsupported_question_quote", issues)
+
+    def test_invalid_card_function_is_rejected(self):
+        payload = valid_analysis()
+        payload["card_roles"][0]["function"] = "predicts_contact"
+        issues = validate_analysis_v7(
+            payload,
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+            route="initiative",
+        )
+        self.assertIn("invalid:card_function", issues)
 
     def test_mind_reading_in_brief_is_rejected(self):
         payload = valid_analysis()
         payload["central_dynamic"] = "Он боится написать первым."
         issues = validate_analysis_v7(
             payload,
+            question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
@@ -222,6 +227,7 @@ class AnalysisValidationTests(unittest.TestCase):
         payload["direct_answer"] = "Он точно напишет первым."
         issues = validate_analysis_v7(
             payload,
+            question=INITIATIVE_QUESTION,
             cards=INITIATIVE_CARDS,
             route="initiative",
         )
@@ -297,6 +303,67 @@ class FinalValidationTests(unittest.TestCase):
             hard_safety_issues_v7("Возможно, он выйдет на связь, но карты этого не гарантируют."),
             [],
         )
+
+    def test_one_paragraph_is_warning_not_fallback_reason(self):
+        one_paragraph = VALID_INITIATIVE_TEXT.replace("\n\n", " ")
+        issues, warnings = validate_final_v7(
+            {"final_text": one_paragraph},
+            question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS,
+        )
+        self.assertEqual(issues, [])
+        self.assertIn("preferred_paragraph_count:1", warnings)
+
+    def test_real_v7_initiative_inventions_are_hard_failures(self):
+        text = (
+            "Колесница показывает ваш мощный внутренний импульс и желание "
+            "поскорее сдвинуть ситуацию. Башня указывает на внутренние барьеры, "
+            "а Звезда переносит фокус на долгосрочную перспективу."
+        )
+        issues = hard_safety_issues_v7(text)
+        self.assertIn("unsafe:unsupported:user_impulse", issues)
+        self.assertIn("unsafe:unsupported:hurry_desire", issues)
+        self.assertIn("unsafe:unsupported:inner_barriers", issues)
+        self.assertIn("unsafe:unsupported:long_term", issues)
+
+    def test_real_v7_brief_claims_are_rejected(self):
+        text = (
+            "Сочетание указывает на столкновение ваших ожиданий с реальностью. "
+            "Внешние обстоятельства делают быстрый контакт маловероятным, а "
+            "ожидание может быть способом избежать неопределённости и переложить "
+            "ответственность."
+        )
+        issues = hard_safety_issues_v7(text)
+        self.assertIn("unsafe:unsupported:expectations_vs_reality", issues)
+        self.assertIn("unsafe:unsupported:external_circumstances", issues)
+        self.assertIn("unsafe:unsupported:quick_contact", issues)
+        self.assertIn("unsafe:unsupported:avoid_uncertainty", issues)
+        self.assertIn("unsafe:unsupported:shift_responsibility", issues)
+
+    def test_real_v7_relationship_adaptation_is_rejected(self):
+        text = (
+            "Возможность сохранить контакт остаётся, если вы готовы принять его "
+            "прерывистость как данность. Долгие паузы стали неотъемлемой частью "
+            "отношений, поэтому важно не пытаться переделать чужой темп и не "
+            "ранить себя во время сильной тревоги."
+        )
+        issues = hard_safety_issues_v7(text)
+        self.assertIn("unsafe:unsupported:accept_as_given", issues)
+        self.assertIn("unsafe:unsupported:integral_pattern", issues)
+        self.assertIn("unsafe:unsupported:change_other", issues)
+        self.assertIn("unsafe:unsupported:self_harm_metaphor", issues)
+        self.assertIn("unsafe:unsupported:strong_anxiety", issues)
+
+    def test_therapy_language_is_style_warning(self):
+        warnings = style_warnings_v7(
+            VALID_CHOICE_TEXT.replace(
+                "действительно ощущалось ценным",
+                "было экологичным и позволяло чувствовать себя безопасно",
+            ),
+            CHOICE_QUESTION,
+        )
+        self.assertIn("therapy_style:ecological", warnings)
+        self.assertIn("therapy_style:safe", warnings)
 
     def test_cleaning_removes_only_markdown_stars(self):
         source = "**Колесница** сохраняет содержание, а *Звезда* — знак надежды."
