@@ -10,6 +10,8 @@ from reading_engine_v8 import (
     clean_stars_v8,
     generate_reading_v8,
     hard_safety_issues_v8,
+    style_warnings_v8,
+    count_words_v8,
     validate_final_v8,
 )
 
@@ -31,24 +33,36 @@ CHOICE_CARDS = [
     {"name": "Умеренность", "love": "Подходящая мера участия."},
 ]
 
-VALID_INITIATIVE_TEXT = """По символике этого сочетания уверенного указания на первый шаг с его стороны нет, хотя возможность контакта остаётся открытой. Карты не закрывают развитие общения, но пока не показывают его как уже определившееся событие. Поэтому надежда здесь заметнее, чем конкретное подтверждение будущего контакта.
+VALID_INITIATIVE_TEXT = """Скорее нет: в этом сочетании движение к первому контакту встречает слишком сильную помеху. Это не означает, что общения больше не будет, но оснований ждать именно самостоятельного шага другого человека здесь мало. Общий рисунок скорее указывает на задержку, чем на скорое сообщение.
 
-Колесница вносит тему движения и инициативы, однако Башня резко нарушает прямое развитие этого импульса. Звезда сохраняет надежду, но не превращает её в конкретное действие. Вместе карты показывают возможность, которой пока не хватает подтверждения в реальном общении.
+Колесница задаёт движение, однако Башня нарушает его ход, а Звезда оставляет надежду без подтверждённого действия. Вместе они показывают разрыв между импульсом к контакту и его практическим продолжением. Надежда смягчает резкость сочетания, но не устраняет главное препятствие. Поэтому итог пока сдержанный: первый шаг с другой стороны выглядит маловероятным, хотя это символическое прочтение, а не установленный факт."""
 
-В вашем вопросе заметно, как много внимания занимает ожидание контакта. Пока реального шага нет, неопределённость остаётся частью самой ситуации. Что помогло бы вам отличить открытую возможность от надежды, которая пока ничем не подтверждена?"""
+VALID_CHOICE_TEXT = """Продолжать контакт имеет смысл, если вам подходит его нынешний ритм; одной теплоты для такого выбора мало. Вы описываете приятное общение и долгие исчезновения, поэтому вопрос здесь не только в ценности разговоров, но и в том, устраивает ли вас связь между ними.
 
-VALID_CHOICE_TEXT = """Этот контакт может оставаться ценным, но решение зависит не только от теплоты общения, а и от того, насколько его прерывистый ритм подходит вам. В ситуации одновременно присутствуют близость и отсутствие устойчивости, и обе стороны имеют значение для вашего выбора.
-
-Солнце подчёркивает радость и открытость ваших разговоров, Отшельник добавляет к ним дистанцию и долгие паузы, а Умеренность связывает эти стороны через поиск подходящей меры участия. Вместе карты показывают, что приятные моменты и регулярность связи — разные качества контакта.
-
-Расклад не предлагает готового решения и не объясняет причины чужого молчания. Он помогает сопоставить разные стороны происходящего, не обесценивая приятные моменты и не скрывая цену пауз. Какая взаимность и частота общения нужны вам, чтобы продолжение этого контакта ощущалось ценным?"""
+Солнце поддерживает теплоту контакта, но Отшельник добавляет дистанцию, а Умеренность связывает эти полюса через меру участия. Общий рисунок не отменяет хороших моментов, однако и не превращает их в устойчивое общение. Причины пауз из карт неизвестны. Приятные разговоры важны, но терпеть неподходящий ритм ради них не требуется; выбор зависит от того, подходит ли вам контакт целиком."""
 
 
 class PromptTests(unittest.TestCase):
+    def test_prompt_has_no_style_example_or_extra_instructions(self):
+        import reading_engine_v8 as engine
+        prompt = build_prompt_v8(INITIATIVE_QUESTION, INITIATIVE_CARDS, 'initiative')
+        self.assertFalse(hasattr(engine, 'STYLE_EXAMPLES_V8'))
+        self.assertFalse(hasattr(engine, 'style_example_v8'))
+        self.assertNotIn('Эталон', prompt)
+        self.assertNotIn('Тема:', prompt)
+        self.assertIn('Смысловые опоры для трактовки:', prompt)
+        self.assertNotIn('единственные допустимые', prompt)
+        self.assertTrue(prompt.endswith(
+            'Сохрани порядок карт.\nСвяжи их в единый ответ на вопрос.\nНе добавляй неизвестные факты.'))
+        self.assertIn('Не добавляй неизвестные факты', prompt)
+
     def test_one_call_system_requests_ready_text(self):
-        self.assertIn("сразу написать готовый ответ", SYSTEM_PROMPT_V8)
-        self.assertIn("не показывай служебный анализ", SYSTEM_PROMPT_V8)
-        self.assertIn("подменять вопрос о чужой инициативе", SYSTEM_PROMPT_V8)
+        self.assertIn("В начале дай понятный вывод по сочетанию карт", SYSTEM_PROMPT_V8)
+        self.assertIn("Свяжи карты в одну живую историю", SYSTEM_PROMPT_V8)
+        self.assertIn("Верни только JSON-объект с полем final_text.", SYSTEM_PROMPT_V8)
+        for phrase in ("скорее да", "скорее нет", "пока неясно",
+                       "саму тему движения", "Итог:", "Не используй конструкции"):
+            self.assertNotIn(phrase, SYSTEM_PROMPT_V8)
 
     def test_schema_has_only_final_text(self):
         self.assertEqual(FINAL_SCHEMA_V8["required"], ["final_text"])
@@ -72,7 +86,7 @@ class PromptTests(unittest.TestCase):
             INITIATIVE_CARDS,
             "initiative",
         )
-        self.assertIn("Не переходи к возможности инициативы пользователя", prompt)
+        self.assertIn("Оцени, поддерживает ли сочетание первый шаг другого человека; не переноси инициативу на пользователя", prompt)
 
     def test_love_prompt_does_not_require_accepting_bad_rhythm(self):
         prompt = build_prompt_v8(
@@ -81,10 +95,101 @@ class PromptTests(unittest.TestCase):
             "personal_choice",
             "love",
         )
-        self.assertIn("не предлагай терпеть или принимать неудобный ритм", prompt)
+        self.assertIn("не советуя терпеть неудобный ритм", prompt)
 
 
 class ValidationTests(unittest.TestCase):
+    def test_one_to_three_paragraphs_are_allowed_four_rejected(self):
+        for count in (1, 2, 3, 4):
+            with self.subTest(count=count):
+                blocks = ['Колесница Башня Звезда ' + ' '.join(['слово'] * 15)]
+                blocks.extend([' '.join(['слово'] * 18)] * (count - 1))
+                if count == 1:
+                    blocks[0] += ' ' + ' '.join(['слово'] * 40)
+                text = '\n\n'.join(blocks)
+                issues, _ = validate_final_v8(
+                    {'final_text': text}, question=INITIATIVE_QUESTION,
+                    cards=INITIATIVE_CARDS, route='initiative')
+                self.assertEqual(any(i.startswith('paragraph_count:') for i in issues), count == 4)
+
+    def test_cliches_produce_style_warnings_without_rejection(self):
+        cases = (
+            ('саму тему движения', 'cliche_movement_topic'),
+            ('прямое развитие импульса', 'cliche_impulse_development'),
+            ('состоявшийся практический шаг', 'cliche_practical_step'),
+            ('возможность остаётся открытой', 'cliche_open_possibility'),
+            ('нельзя считать подтверждённой', 'cliche_unconfirmed'),
+            ('по символике сочетания нельзя уверенно сказать', 'cliche_symbolic_uncertainty'),
+            ('Итог:', 'service_conclusion_label'),
+        )
+        for phrase, label in cases:
+            with self.subTest(label=label):
+                text = VALID_INITIATIVE_TEXT + ' ' + phrase.upper() + '.'
+                issues, warnings = validate_final_v8(
+                    {'final_text': text}, question=INITIATIVE_QUESTION,
+                    cards=INITIATIVE_CARDS, route='initiative')
+                self.assertEqual(issues, [])
+                self.assertIn(label, warnings)
+
+    def test_probability_word_repetition_including_inflections_and_synonyms(self):
+        for text in ('Возможность есть, но возможности мало.',
+                     'Потенциал сменяется потенциалом.',
+                     'Вероятность зависит от вероятности.',
+                     'Возможность, потенциал, вероятность.'):
+            with self.subTest(text=text):
+                self.assertIn('repeated_probability_words',
+                              style_warnings_v8(text, INITIATIVE_QUESTION))
+        for text in ('Возможность есть.', 'Потенциал есть.', 'Вероятность мала.',
+                     'Скорее нет, пока движение остановлено.'):
+            with self.subTest(text=text):
+                self.assertNotIn('repeated_probability_words',
+                                 style_warnings_v8(text, INITIATIVE_QUESTION))
+
+    def test_three_paragraphs_are_not_a_hard_error(self):
+        text = VALID_INITIATIVE_TEXT.replace('Поэтому итог', '\n\nПоэтому итог')
+        issues, warnings = validate_final_v8(
+            {'final_text': text}, question=INITIATIVE_QUESTION,
+            cards=INITIATIVE_CARDS, route='initiative')
+        self.assertEqual(issues, [])
+        self.assertIn('preferred_paragraph_count:3', warnings)
+
+    def test_zero_or_one_question_anywhere_is_allowed(self):
+        for text in (VALID_INITIATIVE_TEXT,
+                     'Что даёт сочетание? ' + VALID_INITIATIVE_TEXT):
+            with self.subTest(question_count=text.count('?')):
+                issues, _ = validate_final_v8(
+                    {'final_text': text}, question=INITIATIVE_QUESTION,
+                    cards=INITIATIVE_CARDS, route='initiative')
+                self.assertEqual(issues, [])
+
+    def test_word_count_boundaries(self):
+        for count in (54, 55, 69, 70, 130, 131, 180, 181):
+            with self.subTest(count=count):
+                text = 'Колесница Башня Звезда\n\n' + ' '.join(['слово'] * (count - 3))
+                self.assertEqual(count_words_v8(text), count)
+                issues, warnings = validate_final_v8(
+                    {'final_text': text}, question=INITIATIVE_QUESTION,
+                    cards=INITIATIVE_CARDS, route='initiative')
+                self.assertEqual(any(i.startswith('extreme_word_count:') for i in issues),
+                                 count < 55 or count > 180)
+                self.assertEqual(any(w.startswith('preferred_word_count:') for w in warnings),
+                                 count < 70 or count > 130)
+
+    def test_two_paragraphs_preferred_three_remain_allowed(self):
+        for count in (1, 2, 3, 4):
+            with self.subTest(count=count):
+                text = '\n\n'.join([' '.join(['слово'] * 30)] * count)
+                warnings = style_warnings_v8(text, INITIATIVE_QUESTION)
+                self.assertEqual(any(w.startswith('preferred_paragraph_count:') for w in warnings),
+                                 count != 2)
+
+    def test_diagnosis_manipulation_and_guarantees_remain_rejected(self):
+        for text, label in (('У вас травма.', 'diagnosis'),
+                            ('Вызови ревность.', 'manipulation'),
+                            ('Карты гарантируют результат.', 'guarantee')):
+            with self.subTest(label=label):
+                self.assertIn('unsafe:' + label, hard_safety_issues_v8(text))
+
     def test_valid_initiative_text_passes(self):
         issues, warnings = validate_final_v8(
             {"final_text": VALID_INITIATIVE_TEXT},
@@ -116,10 +221,7 @@ class ValidationTests(unittest.TestCase):
         self.assertIn("final_missing_cards:Звезда", issues)
 
     def test_two_questions_are_rejected(self):
-        text = VALID_CHOICE_TEXT.replace(
-            "Расклад не предлагает",
-            "Стоит ли продолжать этот контакт? Расклад не предлагает",
-        )
+        text = VALID_CHOICE_TEXT + " Что важно? Что дальше?"
         issues, _ = validate_final_v8(
             {"final_text": text},
             question=CHOICE_QUESTION,
@@ -129,10 +231,7 @@ class ValidationTests(unittest.TestCase):
         self.assertIn("question_count:2", issues)
 
     def test_user_initiative_shift_is_rejected(self):
-        text = VALID_INITIATIVE_TEXT.replace(
-            "Карты не закрывают развитие общения",
-            "Возможна ваша собственная инициатива. Карты не закрывают развитие общения",
-        )
+        text = VALID_INITIATIVE_TEXT + " Возможна ваша собственная инициатива."
         issues, _ = validate_final_v8(
             {"final_text": text},
             question=INITIATIVE_QUESTION,
@@ -254,10 +353,7 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(result["stage"], "generation")
 
     def test_unsafe_text_is_rejected_without_retry(self):
-        unsafe = VALID_INITIATIVE_TEXT.replace(
-            "Карты не закрывают развитие общения",
-            "Он хочет написать первым. Карты не закрывают развитие общения",
-        )
+        unsafe = VALID_INITIATIVE_TEXT + " Он хочет написать первым."
         calls = []
 
         def model_call(prompt):
