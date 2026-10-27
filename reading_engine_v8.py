@@ -351,6 +351,8 @@ def unpack_reply_v8(reply: Any) -> tuple[dict[str, Any] | None, dict[str, Any], 
         status_issues.append("response_not_completed")
     if reply.get("error_type"):
         diagnostics["error_type"] = reply["error_type"]
+    if reply.get("error_message") is not None:
+        diagnostics["error_message"] = reply["error_message"]
     payload = reply.get("payload")
     if isinstance(payload, dict):
         return payload, diagnostics, status_issues

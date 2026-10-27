@@ -7,14 +7,55 @@ from unittest.mock import patch
 
 import httpx
 
-from ai_reader_openai_v8 import ask_openai_v8
-from reading_engine_v8 import generate_reading_v8
+from ai_reader_openai_v8 import ask_openai_v8, _safe_error_message
+from reading_engine_v8 import generate_reading_v8, unpack_reply_v8
+from preview_reading_v8 import diagnostic
 from test_reading_engine_v8 import (
     INITIATIVE_CARDS, INITIATIVE_QUESTION, VALID_INITIATIVE_TEXT,
 )
 
 
 class OpenAITransportTests(unittest.TestCase):
+    def test_exception_diagnostics_are_redacted_and_reach_preview(self):
+        message = (
+            'Failed: sk-proj-artificial-key; Bearer artificial-token '
+            '__SECRET_TEST_VALUE__ https://user:password@proxy.invalid:8080/path'
+        )
+        with patch('ai_reader_openai_v8.httpx.Client',
+                   side_effect=RuntimeError(message)):
+            reply = ask_openai_v8('offline diagnostic test')
+        self.assertEqual(reply['error_type'], 'RuntimeError')
+        self.assertEqual(reply['error_message'],
+            'Failed: [REDACTED]; Bearer [REDACTED] '
+            '[REDACTED] https://[REDACTED]@proxy.invalid:8080/path')
+        _, info, _ = unpack_reply_v8(reply)
+        output = diagnostic({'diagnostics': info})
+        self.assertIn('error_type: RuntimeError', output)
+        self.assertIn('error_message: ' + reply['error_message'], output)
+        for secret in ('sk-proj-artificial-key', 'artificial-token',
+                       '__SECRET_TEST_VALUE__', 'user:password'):
+            self.assertNotIn(secret, output)
+
+    def test_redacts_multiple_credentials_and_preserves_useful_details(self):
+        message = ('bEaReR token-one, Bearer token-two\n'
+                   'sk-test-one sk-test-two __SECRET_ONE__ __SECRET_TWO__ '
+                   'http://alice:p%40ss@host.invalid/path '
+                   'socks5://bob:pass@other.invalid:1080; timeout')
+        safe = _safe_error_message(message)
+        for secret in ('token-one', 'token-two', 'sk-test-one', 'sk-test-two',
+                       '__SECRET_ONE__', '__SECRET_TWO__', 'alice', 'p%40ss',
+                       'bob', ':pass@'):
+            self.assertNotIn(secret, safe)
+        self.assertIn('host.invalid/path', safe)
+        self.assertIn('other.invalid:1080; timeout', safe)
+        self.assertEqual(_safe_error_message('Connection timed out'),
+                         'Connection timed out')
+
+    def test_success_diagnostic_has_no_exception_fields(self):
+        output = diagnostic({'diagnostics': {'status': 'completed'}})
+        self.assertNotIn('error_type:', output)
+        self.assertNotIn('error_message:', output)
+
     def run_http_case(self, outcome=200, *, proxy=False, no_proxy=False,
                       body=None, status='completed', raw_text=None):
         calls = {'direct': [], 'proxy': []}
@@ -66,7 +107,6 @@ class OpenAITransportTests(unittest.TestCase):
         self.assertEqual(len(calls['direct' if selected == 'proxy' else 'proxy']), 0)
         self.assertEqual(output.getvalue(), '')
         self.assertNotIn('fake-password', repr(result))
-        self.assertNotIn('synthetic-sensitive-message', repr(result))
         return result, raw
 
     def test_success_direct_and_https_proxy(self):

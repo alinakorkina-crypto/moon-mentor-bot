@@ -81,9 +81,15 @@ def diagnostic(result) -> str:
     usage = info.get("usage") or {}
     cost = info.get("cost_usd")
     cost_text = f"${cost:.6f}" if isinstance(cost, (int, float)) else "—"
+    error_text = (
+        f"error_type: {info.get('error_type') or '—'}\n"
+        f"error_message: {info.get('error_message') or '—'}\n"
+        if info.get("status") == "ERROR" else ""
+    )
     return (
         f"Модель: {info.get('model') or '—'}\n"
         f"Статус: {info.get('status') or '—'}\n"
+        f"{error_text}"
         f"Входных токенов: {usage.get('input_tokens', '—')}\n"
         f"Кэшированных входных: {usage.get('cached_input_tokens', '—')}\n"
         f"Выходных токенов: {usage.get('output_tokens', '—')}\n"
