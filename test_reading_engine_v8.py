@@ -9,6 +9,9 @@ from reading_engine_v8 import (
     calculate_cost_v8,
     clean_stars_v8,
     generate_reading_v8,
+    infer_question_route_v8,
+    prepare_cards_v8,
+    route_rule_v8,
     hard_safety_issues_v8,
     style_warnings_v8,
     count_words_v8,
@@ -269,6 +272,96 @@ class ValidationTests(unittest.TestCase):
         )
 
 
+class OpenQuestionTests(unittest.TestCase):
+    CASES = (
+        ("Что мне важно понять сейчас?", "general"),
+        ("Что мне важно понять сейчас?", "question"),
+        ("Что происходит между нами?", "love"),
+        ("Что мне мешает развиваться в работе?", "career"),
+    )
+
+    def cards(self):
+        return [dict(card, love=f"Отношения: опора {index}",
+                     career=f"Работа: опора {index}", question="Не значение карты")
+                for index, card in enumerate(INITIATIVE_CARDS)]
+
+    def test_open_questions_preserve_topics_positions_order_and_single_call(self):
+        from unittest.mock import Mock
+        for question, topic in self.CASES:
+            with self.subTest(topic=topic):
+                cards = self.cards()
+                before = json.dumps(cards, ensure_ascii=False)
+                model = Mock(return_value={'payload': {'final_text': VALID_INITIATIVE_TEXT}})
+                result = generate_reading_v8(question=question, cards=cards,
+                                             topic=topic, model_call=model)
+                self.assertEqual(result['status'], 'success')
+                self.assertEqual(result['route'], 'open_question')
+                self.assertEqual(result['ai_requests'], 1)
+                model.assert_called_once()
+                prompt = model.call_args.args[0]
+                self.assertIn(question, prompt)
+                positions = ('основа ситуации', 'главное напряжение', 'направление развития')
+                selected_topic = 'general' if topic == 'question' else topic
+                lines = []
+                for position, card in zip(positions, cards):
+                    line = f"- {position}: {card['name']} — {card[selected_topic]}"
+                    self.assertIn(line, prompt)
+                    lines.append(prompt.index(line))
+                    self.assertIn(card['name'], result['text'])
+                self.assertEqual(lines, sorted(lines))
+                self.assertNotIn('Не значение карты', prompt)
+                self.assertEqual(json.dumps(cards, ensure_ascii=False), before)
+                self.assertIn('Не превращай ответ в совет', prompt)
+
+    def test_topic_specific_rules(self):
+        self.assertIn('главный смысл сочетания', route_rule_v8('open_question', 'general'))
+        self.assertEqual(route_rule_v8('open_question', 'general'),
+                         route_rule_v8('open_question', 'question'))
+        self.assertIn('не утверждая чужие чувства и мысли как факт',
+                      route_rule_v8('open_question', 'love'))
+        self.assertIn('сильную сторону, риск и направление',
+                      route_rule_v8('open_question', 'career'))
+
+    def test_existing_routes_and_positions_are_unchanged(self):
+        from reading_engine_v6 import infer_question_route_v6, prepare_cards_v6
+        for question, route in ((INITIATIVE_QUESTION, 'initiative'),
+                                (CHOICE_QUESTION, 'personal_choice'),
+                                ('Стоит ли менять работу?', 'personal_choice')):
+            with self.subTest(route=route, question=question):
+                self.assertEqual(infer_question_route_v8(question), route)
+                self.assertEqual(infer_question_route_v8(question), infer_question_route_v6(question))
+                for topic in ('general', 'love', 'career'):
+                    self.assertEqual(prepare_cards_v8(self.cards(), route, topic),
+                                     prepare_cards_v6(self.cards(), route, topic))
+
+    def test_open_question_rejects_missing_cards_and_mind_reading_without_retry(self):
+        from unittest.mock import Mock
+        for text, issue in (
+            (VALID_INITIATIVE_TEXT.replace('Звезда', 'последняя карта'), 'final_missing_cards:Звезда'),
+            (VALID_INITIATIVE_TEXT + ' Он думает о вас.', 'unsafe:mind_reading'),
+            (VALID_INITIATIVE_TEXT + ' Она чувствует любовь.', 'unsafe:mind_reading'),
+        ):
+            with self.subTest(issue=issue):
+                model = Mock(return_value={'payload': {'final_text': text}})
+                result = generate_reading_v8(question='Что происходит между нами?',
+                    cards=self.cards(), topic='love', model_call=model)
+                model.assert_called_once()
+                self.assertEqual(result['status'], 'rejected')
+                self.assertIsNone(result['text'])
+                self.assertIn(issue, result['issues'])
+
+    def test_open_question_errors_never_retry(self):
+        from unittest.mock import Mock
+        for model in (Mock(side_effect=TimeoutError('offline timeout')),
+                      Mock(return_value='{'), Mock(return_value=None)):
+            with self.subTest(model=model):
+                result = generate_reading_v8(question='Что мне важно понять сейчас?',
+                    cards=self.cards(), model_call=model)
+                model.assert_called_once()
+                self.assertEqual(result['status'], 'error')
+                self.assertEqual(result['ai_requests'], 1)
+
+
 class CostTests(unittest.TestCase):
     def test_terra_cost_includes_cached_input_and_output(self):
         cost = calculate_cost_v8(
@@ -371,17 +464,20 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(result["rejected_text"], unsafe)
         self.assertIn("unsafe:mind_reading", result["issues"])
 
-    def test_unsupported_route_makes_no_call(self):
+    def test_open_question_uses_one_call(self):
         calls = []
+        def model_call(prompt):
+            calls.append(prompt)
+            return {"payload": {"final_text": VALID_INITIATIVE_TEXT}}
         result = generate_reading_v8(
             question="Расскажите об этом раскладе.",
             cards=INITIATIVE_CARDS,
-            model_call=lambda prompt: calls.append(prompt),
+            model_call=model_call,
         )
-        self.assertEqual(calls, [])
-        self.assertEqual(result["ai_requests"], 0)
-        self.assertEqual(result["status"], "unsupported_route")
-        self.assertIsNone(result["text"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["ai_requests"], 1)
+        self.assertEqual(result["route"], "open_question")
+        self.assertEqual(result["status"], "success")
 
 
 class ResultContractTests(unittest.TestCase):

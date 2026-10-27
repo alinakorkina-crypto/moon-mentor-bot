@@ -118,10 +118,46 @@ STYLE_WARNING_PATTERNS_V8 = (
 )
 
 
+OPEN_QUESTION_POSITIONS_V8 = (
+    "основа ситуации",
+    "главное напряжение",
+    "направление развития",
+)
+
+
+def infer_question_route_v8(question: str) -> str:
+    route = infer_question_route_v6(question)
+    return route if route in {"initiative", "personal_choice"} else "open_question"
+
+
+def prepare_cards_v8(
+    cards: list[dict[str, Any]], route: str, topic: str = "general",
+) -> list[dict[str, str]]:
+    normalized_topic = normalize_topic_v6(topic)
+    if route != "open_question":
+        return prepare_cards_v6(cards, route, normalized_topic)
+    return [
+        {
+            "name": card["name"],
+            "position": (OPEN_QUESTION_POSITIONS_V8[index] if index < 3
+                         else f"Дополнительный ракурс {index + 1}"),
+            "meaning": card.get(normalized_topic) or card.get("general") or "",
+        }
+        for index, card in enumerate(cards)
+    ]
+
+
 def route_rule_v8(route: str, topic: str) -> str:
     if route == "initiative":
         return "Оцени, поддерживает ли сочетание первый шаг другого человека; не переноси инициативу на пользователя"
     normalized_topic = normalize_topic_v6(topic)
+    if route == "open_question":
+        rule = {
+            "general": "Прямо раскрой главный смысл сочетания относительно вопроса.",
+            "love": "Опиши динамику отношений символически, не утверждая чужие чувства и мысли как факт.",
+            "career": "Раскрой рабочую ситуацию, сильную сторону, риск и направление.",
+        }[normalized_topic]
+        return rule + " Не превращай ответ в совет, если пользователь его не просил."
     if normalized_topic == "love":
         return "Сопоставь стороны связи, не решая за пользователя и не советуя терпеть неудобный ритм."
     if normalized_topic == "career":
@@ -135,7 +171,7 @@ def build_prompt_v8(
     route: str,
     topic: str = "general",
 ) -> str:
-    prepared = prepare_cards_v6(cards, route, topic)
+    prepared = prepare_cards_v8(cards, route, topic)
     card_block = "\n".join(
         f"- {item['position']}: {item['name']} — {item['meaning']}"
         for item in prepared
@@ -308,20 +344,7 @@ def generate_reading_v8(
     model_call: Callable[[str], Any],
     topic: str = "general",
 ) -> dict[str, Any]:
-    route = infer_question_route_v6(question)
-    if route not in {"initiative", "personal_choice"}:
-        return {
-            "text": None,
-            "route": route,
-            "status": "unsupported_route",
-            "stage": "routing",
-            "issues": ["unsupported_route"],
-            "warnings": [],
-            "ai_requests": 0,
-            "diagnostics": None,
-            "rejected_text": None,
-            "raw_response_text": None,
-        }
+    route = infer_question_route_v8(question)
 
     try:
         reply = model_call(build_prompt_v8(question, cards, route, topic))
