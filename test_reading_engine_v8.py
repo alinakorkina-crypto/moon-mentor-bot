@@ -219,7 +219,7 @@ class OrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(len(calls), 1)
         self.assertEqual(result["ai_requests"], 1)
-        self.assertFalse(result["used_fallback"])
+        self.assertEqual(result["status"], "success")
         self.assertIsNotNone(result["diagnostics"]["cost_usd"])
 
     def test_json_string_reply_uses_one_call(self):
@@ -235,9 +235,9 @@ class OrchestrationTests(unittest.TestCase):
             model_call=model_call,
         )
         self.assertEqual(len(calls), 1)
-        self.assertFalse(result["used_fallback"])
+        self.assertEqual(result["status"], "success")
 
-    def test_invalid_json_falls_back_without_retry(self):
+    def test_invalid_json_errors_without_retry(self):
         calls = []
 
         def model_call(prompt):
@@ -250,10 +250,10 @@ class OrchestrationTests(unittest.TestCase):
             model_call=model_call,
         )
         self.assertEqual(len(calls), 1)
-        self.assertTrue(result["used_fallback"])
+        self.assertIsNone(result["text"])
         self.assertEqual(result["stage"], "generation")
 
-    def test_unsafe_text_falls_back_without_retry(self):
+    def test_unsafe_text_is_rejected_without_retry(self):
         unsafe = VALID_INITIATIVE_TEXT.replace(
             "Карты не закрывают развитие общения",
             "Он хочет написать первым. Карты не закрывают развитие общения",
@@ -270,7 +270,9 @@ class OrchestrationTests(unittest.TestCase):
             model_call=model_call,
         )
         self.assertEqual(len(calls), 1)
-        self.assertTrue(result["used_fallback"])
+        self.assertEqual(result["status"], "rejected")
+        self.assertIsNone(result["text"])
+        self.assertEqual(result["rejected_text"], unsafe)
         self.assertIn("unsafe:mind_reading", result["issues"])
 
     def test_unsupported_route_makes_no_call(self):
@@ -282,7 +284,110 @@ class OrchestrationTests(unittest.TestCase):
         )
         self.assertEqual(calls, [])
         self.assertEqual(result["ai_requests"], 0)
-        self.assertTrue(result["used_fallback"])
+        self.assertEqual(result["status"], "unsupported_route")
+        self.assertIsNone(result["text"])
+
+
+class ResultContractTests(unittest.TestCase):
+    def generate(self, reply):
+        calls = []
+        def call(prompt):
+            calls.append(prompt)
+            return reply
+        result = generate_reading_v8(question=INITIATIVE_QUESTION,
+                                     cards=INITIATIVE_CARDS, model_call=call)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("used_fallback", result)
+        return result
+
+    def test_rejected_text_preserves_every_character(self):
+        raw = "  **Он хочет написать первым.**\r\n\r\n" + VALID_INITIATIVE_TEXT + "  \n"
+        result = self.generate({"payload": {"final_text": raw}})
+        self.assertEqual(result["status"], "rejected")
+        self.assertIsNone(result["text"])
+        self.assertEqual(result["rejected_text"], raw)
+
+    def test_success_preserves_formatting_except_stars(self):
+        raw = "  " + VALID_INITIATIVE_TEXT.replace("Колесница", "**Колесница**").replace("\n", "\r\n") + "  \n"
+        result = self.generate({"payload": {"final_text": raw}})
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["text"], raw.replace("**", ""))
+
+    def test_json_and_payload_preserve_nbsp_markdown_and_crlf(self):
+        raw = "  **Он\u00a0хочет написать первым.**\r\n\r\n" + VALID_INITIATIVE_TEXT + "  "
+        for reply in ({"payload": {"final_text": raw}},
+                      json.dumps({"final_text": raw}, ensure_ascii=False),
+                      {"text": json.dumps({"final_text": raw}, ensure_ascii=False)}):
+            with self.subTest(reply_type=type(reply).__name__):
+                result = self.generate(reply)
+                self.assertEqual(result["rejected_text"], raw)
+                self.assertIsNone(result["text"])
+
+    def test_invalid_json_preserves_raw_response(self):
+        raw = '  {"final_text": "**искусственный\u00a0ответ**'
+        result = self.generate({"raw_response_text": raw, "status": "completed"})
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["raw_response_text"], raw)
+        self.assertIsNone(result["rejected_text"])
+
+    def test_validation_does_not_mutate_payload(self):
+        raw = "  " + VALID_INITIATIVE_TEXT.replace("\n", "\\n") + "  "
+        payload = {"final_text": raw}
+        issues, _ = validate_final_v8(payload, question=INITIATIVE_QUESTION,
+                                     cards=INITIATIVE_CARDS, route="initiative")
+        self.assertEqual(issues, [])
+        self.assertEqual(payload, {"final_text": raw})
+
+    def test_style_warning_keeps_original_answer(self):
+        raw = VALID_INITIATIVE_TEXT.replace("\n\n", " ")
+        result = self.generate({"payload": {"final_text": raw}})
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["text"], raw)
+        self.assertTrue(result["warnings"])
+
+    def test_empty_invalid_refused_and_incomplete_responses(self):
+        for reply in (None, "{", {"status": "completed", "payload": None},
+                      {"status": "incomplete", "payload": {"final_text": VALID_INITIATIVE_TEXT}},
+                      {"status": "ERROR", "error_type": "ReadTimeout"}):
+            with self.subTest(reply=reply):
+                result = self.generate(reply)
+                self.assertEqual(result["status"], "error")
+                self.assertIsNone(result["text"])
+                self.assertTrue(result["issues"])
+
+    def test_model_exception_is_reported_without_retry(self):
+        calls = []
+        def call(prompt):
+            calls.append(prompt)
+            raise RuntimeError("not for logs")
+        result = generate_reading_v8(question=INITIATIVE_QUESTION,
+                                     cards=INITIATIVE_CARDS, model_call=call)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["status"], "error")
+        self.assertIsNone(result["text"])
+        self.assertEqual(result["diagnostics"]["error_type"], "RuntimeError")
+
+
+class PreviewTests(unittest.TestCase):
+    def test_preview_reports_each_result_without_real_ai(self):
+        import contextlib
+        import io
+        from unittest.mock import patch
+        import preview_reading_v8 as preview
+        replies = [
+            {"payload": {"final_text": VALID_INITIATIVE_TEXT}},
+            {"payload": {"final_text": "  **Он хочет написать первым.**  "}},
+            {"status": "ERROR", "error_type": "ReadTimeout"},
+        ]
+        output = io.StringIO()
+        with patch.object(preview, "ask_openai_v8", side_effect=replies) as call, \
+             contextlib.redirect_stdout(output):
+            preview.main()
+        self.assertEqual(call.call_count, 3)
+        for status in ("success", "rejected", "error"):
+            self.assertIn("Результат: " + status, output.getvalue())
+        self.assertNotIn("локальный fallback", output.getvalue())
+        self.assertNotIn("**Он хочет написать первым.**", output.getvalue())
 
 
 if __name__ == "__main__":

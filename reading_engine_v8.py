@@ -3,24 +3,22 @@
 The model receives the complete question, route, cards, positions and allowed
 meanings in one prompt and returns ready-to-send prose. Python never rewrites
 that prose: it only removes Markdown stars, validates hard safety constraints,
-and falls back locally when transport or safety checks fail.
+and reports transport or safety failures without substituting local prose.
 """
 
 from __future__ import annotations
 
 import re
+import json
 from typing import Any, Callable
 
 from reading_engine_v6 import (
-    clean_stars_v6,
     count_words_v6,
-    fallback_v6,
     infer_question_route_v6,
     missing_cards_v6,
     normalize_final_layout_v6,
     normalize_text_v6,
     normalize_topic_v6,
-    parse_json_v6,
     prepare_cards_v6,
     split_paragraphs_v6,
 )
@@ -311,6 +309,19 @@ def validate_final_v8(
     return list(dict.fromkeys(issues)), style_warnings_v8(text, question)
 
 
+def parse_json_v8(raw: str | None) -> tuple[dict[str, Any] | None, list[str]]:
+    """Decode JSON without normalizing any characters inside string values."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None, ["empty_answer"]
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, ["invalid_json"]
+    if not isinstance(payload, dict):
+        return None, ["payload_not_object"]
+    return payload, []
+
+
 def unpack_reply_v8(reply: Any) -> tuple[dict[str, Any] | None, dict[str, Any], list[str]]:
     diagnostics = {
         "status": None,
@@ -319,7 +330,7 @@ def unpack_reply_v8(reply: Any) -> tuple[dict[str, Any] | None, dict[str, Any], 
         "cost_usd": None,
     }
     if isinstance(reply, str) or reply is None:
-        payload, issues = parse_json_v6(reply)
+        payload, issues = parse_json_v8(reply)
         return payload, diagnostics, issues
     if not isinstance(reply, dict):
         return None, diagnostics, ["unsupported_reply_type"]
@@ -334,12 +345,18 @@ def unpack_reply_v8(reply: Any) -> tuple[dict[str, Any] | None, dict[str, Any], 
     model = diagnostics["model"] or MODEL_NAME_V8
     diagnostics["cost_usd"] = calculate_cost_v8(diagnostics["usage"], model)
 
+    status = reply.get("status")
+    status_issues = list(reply.get("issues") or [])
+    if status is not None and status != "completed":
+        status_issues.append("response_not_completed")
+    if reply.get("error_type"):
+        diagnostics["error_type"] = reply["error_type"]
     payload = reply.get("payload")
     if isinstance(payload, dict):
-        return payload, diagnostics, []
-    raw = reply.get("text")
-    payload, issues = parse_json_v6(raw if isinstance(raw, str) else None)
-    return payload, diagnostics, issues
+        return payload, diagnostics, status_issues
+    raw = reply.get("raw_response_text", reply.get("text"))
+    payload, issues = parse_json_v8(raw if isinstance(raw, str) else None)
+    return payload, diagnostics, status_issues + issues
 
 
 def calculate_cost_v8(usage: Any, model: str = MODEL_NAME_V8) -> float | None:
@@ -357,8 +374,10 @@ def calculate_cost_v8(usage: Any, model: str = MODEL_NAME_V8) -> float | None:
     ) / 1_000_000
 
 
-def fallback_v8(question: str, cards: list[dict[str, Any]], route: str) -> str:
-    return fallback_v6(question, cards, route)
+def clean_stars_v8(text: str) -> str:
+    """Remove paired emphasis markers, preserving all other characters."""
+    cleaned = re.sub(r"\*\*(?=\S)([^*\n]*?\S)\*\*", r"\1", text)
+    return re.sub(r"(?<!\*)\*(?=\S)([^*\n]*?\S)\*(?!\*)", r"\1", cleaned)
 
 
 def generate_reading_v8(
@@ -371,27 +390,33 @@ def generate_reading_v8(
     route = infer_question_route_v6(question)
     if route not in {"initiative", "personal_choice"}:
         return {
-            "text": fallback_v8(question, cards, route),
+            "text": None,
             "route": route,
-            "used_fallback": True,
+            "status": "unsupported_route",
             "stage": "routing",
             "issues": ["unsupported_route"],
             "warnings": [],
             "ai_requests": 0,
             "diagnostics": None,
             "rejected_text": None,
+            "raw_response_text": None,
         }
 
-    reply = model_call(build_prompt_v8(question, cards, route, topic))
+    try:
+        reply = model_call(build_prompt_v8(question, cards, route, topic))
+    except Exception as error:
+        reply = {"status": "ERROR", "error_type": type(error).__name__}
+    raw_response_text = (
+        reply if isinstance(reply, str) else
+        reply.get("raw_response_text", reply.get("text")) if isinstance(reply, dict) else None
+    )
     payload, diagnostics, issues = unpack_reply_v8(reply)
     warnings: list[str] = []
     rejected_text = None
     if payload is not None:
         text = payload.get("final_text")
         if isinstance(text, str):
-            normalized = normalize_final_layout_v6(text)
-            payload = {**payload, "final_text": normalized}
-            rejected_text = clean_stars_v6(normalized)
+            rejected_text = text
         hard_issues, warnings = validate_final_v8(
             payload,
             question=question,
@@ -402,30 +427,34 @@ def generate_reading_v8(
 
     if payload is None or issues:
         return {
-            "text": fallback_v8(question, cards, route),
+            "text": None,
             "route": route,
-            "used_fallback": True,
+            "status": "error" if (
+                payload is None or "schema_validation_error" in issues
+                or diagnostics.get("status") not in (None, "completed")
+            ) else "rejected",
             "stage": "generation",
             "issues": list(dict.fromkeys(issues)),
             "warnings": warnings,
             "ai_requests": 1,
             "diagnostics": diagnostics,
             "rejected_text": rejected_text,
+            "raw_response_text": raw_response_text,
         }
 
     return {
-        "text": clean_stars_v6(payload["final_text"]),
+        "text": clean_stars_v8(payload["final_text"]),
         "route": route,
-        "used_fallback": False,
+        "status": "success",
         "stage": "complete",
         "issues": [],
         "warnings": warnings,
         "ai_requests": 1,
         "diagnostics": diagnostics,
         "rejected_text": None,
+        "raw_response_text": raw_response_text,
     }
 
 
 count_words_v8 = count_words_v6
 split_paragraphs_v8 = split_paragraphs_v6
-clean_stars_v8 = clean_stars_v6

@@ -113,19 +113,20 @@ def main() -> None:
         print(f"===== TEST {index}: {scenario['title']} =====\n")
         print(f"Вопрос: {scenario['question']}")
         print("Карты: " + " — ".join(card["name"] for card in scenario["cards"]) + "\n")
-        print(result["text"])
+        text = result["text"]
+        if result["status"] == "success":
+            print(text)
+        else:
+            print("Готового ответа нет; см. статус и диагностику ниже.")
         print(f"\nМаршрут: {result['route']}")
-        print(f"Слов: {count_words_v8(result['text'])}")
-        print(f"Абзацев: {len(split_paragraphs_v8(result['text']))}")
-        print("Источник: " + ("локальный fallback" if result["used_fallback"] else "OpenAI, один запрос"))
+        print(f"Слов: {count_words_v8(text) if text is not None else '—'}")
+        print(f"Абзацев: {len(split_paragraphs_v8(text)) if text is not None else '—'}")
+        print(f"Результат: {result['status']}")
         print(f"Этап: {result['stage']}")
         print("Ошибки: " + (", ".join(result["issues"]) if result["issues"] else "нет"))
         print("Предупреждения: " + (", ".join(result["warnings"]) if result["warnings"] else "нет"))
         print(diagnostic(result))
-        if result.get("rejected_text"):
-            print("\nОтклонённый AI-текст:\n")
-            print(result["rejected_text"])
-        print(f"AI-запросов: {calls}")
+        print(f"Вызовов модели: {calls} (автоматические HTTP-повторы отключены)")
         print(f"\n===== END TEST {index} =====\n")
 
 

@@ -5,10 +5,12 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from openai import OpenAI
-from pydantic import BaseModel, ConfigDict
+import httpx
 
-from reading_engine_v8 import MODEL_NAME_V8, SYSTEM_PROMPT_V8
+from openai import OpenAI
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+from reading_engine_v8 import MODEL_NAME_V8, SYSTEM_PROMPT_V8, FINAL_SCHEMA_V8, parse_json_v8
 
 
 MODEL_NAME = os.getenv("OPENAI_MODEL", MODEL_NAME_V8)
@@ -44,32 +46,44 @@ def _usage(response: Any) -> dict[str, int] | None:
 def ask_openai_v8(prompt: str) -> dict[str, Any]:
     """Return parsed payload plus token diagnostics from exactly one API call."""
     try:
-        client = OpenAI()
-        response = client.responses.parse(
-            model=MODEL_NAME,
-            reasoning={"effort": "low"},
-            max_output_tokens=900,
-            input=[
-                {"role": "system", "content": SYSTEM_PROMPT_V8},
-                {"role": "user", "content": prompt},
-            ],
-            text_format=ReadingResponseV8,
-        )
-        parsed = _value(response, "output_parsed")
-        payload = parsed.model_dump() if parsed is not None else None
+        with httpx.Client(
+            trust_env=True,
+            follow_redirects=False,
+            timeout=60.0,
+        ) as http_client, OpenAI(max_retries=0, http_client=http_client) as client:
+            response = client.responses.create(
+                model=MODEL_NAME,
+                reasoning={"effort": "low"},
+                max_output_tokens=900,
+                input=[
+                    {"role": "system", "content": SYSTEM_PROMPT_V8},
+                    {"role": "user", "content": prompt},
+                ],
+                text={"format": {"type": "json_schema", "name": "reading_v8",
+                                 "strict": True, "schema": FINAL_SCHEMA_V8}},
+            )
+        # Preserve available response data before validating the model's JSON.
+        raw = _value(response, "output_text")
+        payload, issues = parse_json_v8(raw)
+        if payload is not None:
+            try:
+                ReadingResponseV8.model_validate(payload)
+            except ValidationError:
+                issues.append("schema_validation_error")
         return {
             "payload": payload,
-            "text": _value(response, "output_text"),
+            "raw_response_text": raw,
             "status": _value(response, "status"),
             "model": _value(response, "model", MODEL_NAME),
             "usage": _usage(response),
+            "issues": issues,
         }
     except Exception as error:
-        print(f"OpenAI v8 error: {error}")
         return {
             "payload": None,
-            "text": None,
+            "raw_response_text": None,
             "status": "ERROR",
+            "error_type": type(error).__name__,
             "model": MODEL_NAME,
             "usage": None,
         }
