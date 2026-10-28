@@ -13,6 +13,10 @@ from ai_reader import ask_gemini
 
 load_dotenv()
 
+from reading_service_v8 import ReadingServiceV8, FAILURE_MESSAGE, v8_enabled
+
+reading_service_v8 = ReadingServiceV8()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 bot = Bot(token=BOT_TOKEN)
@@ -2011,6 +2015,51 @@ async def send_text(message: Message, text: str, reply_markup=None):
         )
 
 
+async def send_v8_reading(message: Message, mode: str | None = None):
+    key = (message.chat.id, message.message_id)
+    operation = reading_service_v8.get(key)
+    if operation is None:
+        cards = draw_cards(3)
+        operation = reading_service_v8.start(
+            key, mode=mode, question=message.text, cards=cards,
+        )
+    async with operation.delivery_lock:
+        if operation.delivered:
+            return
+        if not operation.progress_sent:
+            operation.progress_sent = True
+            await message.answer("🃏 Раскладываю карты...")
+        result = await operation.result()
+        if result.get("status") != "success" or not isinstance(result.get("text"), str):
+            await message.answer(FAILURE_MESSAGE, reply_markup=main_menu)
+            operation.delivered = True
+            return
+
+        if not operation.history_recorded:
+            # Mark before writing: partial history/analytics failures must not
+            # record the same operation twice on Telegram redelivery.
+            operation.history_recorded = True
+            history_type = {"question": "personal_question", "love": "love", "career": "career"}[operation.mode]
+            save_history(message.from_user.id, history_type, operation.cards,
+                         question=operation.question, username=get_username_from_message(message))
+        heading = {
+            "question": f"💭 Ваш вопрос\n\n{operation.question}",
+            "love": "❤️ Расклад на отношения",
+            "career": "💼 Карьерный расклад",
+        }[operation.mode]
+        text = (f"{heading}\n\n🃏 Выпавшие карты\n\n"
+                f"{format_cards_list(operation.cards)}\n\n{result['text']}")
+        if not operation.images_sent:
+            await send_card_images(message, operation.cards)
+            operation.images_sent = True
+        # Bypass send_text and all legacy cleanup/rewriting for v8. Slice only
+        # for Telegram's message length limit, preserving every character.
+        for offset in range(0, len(text), 3800):
+            await message.answer(text[offset:offset + 3800],
+                                 reply_markup=main_menu if offset + 3800 >= len(text) else None)
+        operation.delivered = True
+
+
 
 async def start_command(message: Message):
     user_mode[message.from_user.id] = None
@@ -2027,6 +2076,9 @@ async def start_command(message: Message):
 @dp.message()
 async def handle_buttons(message: Message):
     user_id = message.from_user.id
+    if reading_service_v8.get((message.chat.id, message.message_id)) is not None:
+        await send_v8_reading(message)
+        return
 
     navigation_buttons = {
         "⬅️ Главное меню",
@@ -2180,6 +2232,9 @@ async def handle_buttons(message: Message):
             return
 
         user_mode[user_id] = None
+        if v8_enabled():
+            await send_v8_reading(message, "question")
+            return
         await message.answer("🃏 Раскладываю карты...")
         reading_text, cards = make_question_reading(message.text, user_id, get_username_from_message(message))
         await send_reading(message, reading_text, cards, reply_markup=main_menu)
@@ -2191,6 +2246,9 @@ async def handle_buttons(message: Message):
             return
 
         user_mode[user_id] = None
+        if v8_enabled():
+            await send_v8_reading(message, "love")
+            return
         await message.answer("🃏 Раскладываю карты...")
         reading_text, cards = make_love_reading(message.text, user_id, get_username_from_message(message))
         await send_reading(message, reading_text, cards, reply_markup=main_menu)
@@ -2202,6 +2260,9 @@ async def handle_buttons(message: Message):
             return
 
         user_mode[user_id] = None
+        if v8_enabled():
+            await send_v8_reading(message, "career")
+            return
         await message.answer("🃏 Раскладываю карты...")
         reading_text, cards = make_career_reading(message.text, user_id, get_username_from_message(message))
         await send_reading(message, reading_text, cards, reply_markup=main_menu)
