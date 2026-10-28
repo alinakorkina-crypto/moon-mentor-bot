@@ -44,7 +44,7 @@ class ReadingOperation:
     mode: str
     question: str
     cards: list[dict]
-    task: asyncio.Task
+    task: asyncio.Future
     delivery_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     progress_sent: bool = False
     images_sent: bool = False
@@ -62,6 +62,16 @@ class ReadingServiceV8:
 
     def get(self, key: tuple[int, int]) -> ReadingOperation | None:
         return self.operations.get(key)
+
+    def restore(self, key, *, mode, question, cards, result):
+        """Restore a persisted completed operation without invoking a model."""
+        if key not in self.operations:
+            future = asyncio.get_running_loop().create_future()
+            future.set_result(result)
+            self.operations[key] = ReadingOperation(
+                mode=mode, question=question, cards=cards, task=future,
+            )
+        return self.operations[key]
 
     def start(self, key: tuple[int, int], *, mode: str, question: str,
               cards: list[dict]) -> ReadingOperation:

@@ -24,7 +24,8 @@ class BotReadingTests(unittest.IsolatedAsyncioTestCase):
             guard = patch(target, side_effect=AssertionError('External IO forbidden'))
             guard.start()
             self.addCleanup(guard.stop)
-        environment = patch.dict(os.environ, {'BOT_TOKEN': '123456:offline-test-token', 'OPENAI_API_KEY': 'offline-test-only'}, clear=True)
+        environment = patch.dict(os.environ, {'BOT_TOKEN': '123456:offline-test-token', 'OPENAI_API_KEY': 'offline-test-only',
+                                             **getattr(self, 'extra_environment', {})}, clear=True)
         environment.start()
         self.addCleanup(environment.stop)
 

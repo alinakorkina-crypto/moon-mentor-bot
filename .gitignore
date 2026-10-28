@@ -1,5 +1,6 @@
 # Environment
 .env
+.env.*
 venv/
 .venv/
 
@@ -16,6 +17,20 @@ __pycache__/
 history.json
 analytics.json
 dialogs.jsonl
+
+# Payment ledger, journals, backups and SQLite temporary files
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.sqlite3.*
+*.sqlite.*
+*.db.*
+etilqs_*
+payments*.bak
+payments*.backup*
 
 # Archives / downloaded sources
 *.zip

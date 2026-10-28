@@ -33,3 +33,7 @@ process. They are not durable across restarts or shared between workers. Errors
 do not trigger another model or legacy fallback. A timeout does not prove that
 the provider did not process the request. Switching to `legacy` affects new
 operations; already cached v8 operations retain their original result.
+
+Optional Telegram Stars accounting adds a persistent credit ledger and durable
+successful results when `PAYMENTS_ENABLED=true`; see `PAYMENTS_MVP.md`. It is
+disabled by default and does not alter the unmetered legacy path.

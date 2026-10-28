@@ -1,5 +1,7 @@
-from aiogram import Bot, Dispatcher
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, FSInputFile, InputMediaPhoto
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import (Message, ReplyKeyboardMarkup, KeyboardButton, FSInputFile,
+                          InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton,
+                          LabeledPrice, PreCheckoutQuery, CallbackQuery)
 from aiogram.filters import CommandStart
 from dotenv import load_dotenv
 import asyncio
@@ -14,8 +16,11 @@ from ai_reader import ask_gemini
 load_dotenv()
 
 from reading_service_v8 import ReadingServiceV8, FAILURE_MESSAGE, v8_enabled
+from payments_service import PaymentsService, PaymentError, PACKAGES, UNAVAILABLE, balance_text
+from payments_readings import PaidReadings
 
 reading_service_v8 = ReadingServiceV8()
+payments_service = PaymentsService.from_env()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
@@ -297,6 +302,11 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+if payments_service.requested and payments_service.ready:
+    main_menu = main_menu.model_copy(update={"keyboard": main_menu.keyboard + [[
+        KeyboardButton(text="⭐ Купить расклады"), KeyboardButton(text="🌙 Мой баланс"),
+    ]]})
+
 tarot_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🃏 Карта дня")],
@@ -365,6 +375,9 @@ chat_history_by_user = {}
 
 def draw_cards(count: int):
     return random.sample(tarot_cards, count)
+
+
+paid_readings = PaidReadings(payments_service, reading_service_v8, draw_cards)
 
 
 def split_long_text(text: str, chunk_size: int = 3800):
@@ -2015,8 +2028,24 @@ async def send_text(message: Message, text: str, reply_markup=None):
         )
 
 
-async def send_v8_reading(message: Message, mode: str | None = None):
+async def send_v8_reading(message: Message, mode: str | None = None, *, paid=False):
     key = (message.chat.id, message.message_id)
+    metered = paid or payments_service.requested or paid_readings.has(key)
+    if metered:
+        # The callable is the bot's draw_cards; reservation happens before it.
+        paid_readings.draw_cards = draw_cards
+        status = await paid_readings.prepare(key, user_id=message.from_user.id,
+                                             mode=mode, question=message.text)
+        if status != "ready":
+            if status == "empty":
+                await message.answer("Бесплатные расклады закончились. Купите пакет, чтобы продолжить.",
+                                     reply_markup=buy_keyboard())
+            else:
+                text = (FAILURE_MESSAGE if status == "failed" else
+                        "Этот расклад уже обрабатывается. Если ответ не появится, обратитесь в /paysupport."
+                        if status == "pending" else UNAVAILABLE)
+                await message.answer(text, reply_markup=main_menu)
+            return
     operation = reading_service_v8.get(key)
     if operation is None:
         cards = draw_cards(3)
@@ -2039,6 +2068,8 @@ async def send_v8_reading(message: Message, mode: str | None = None):
             # Mark before writing: partial history/analytics failures must not
             # record the same operation twice on Telegram redelivery.
             operation.history_recorded = True
+            if metered:
+                await payments_service.mark_delivery(key, history=True)
             history_type = {"question": "personal_question", "love": "love", "career": "career"}[operation.mode]
             save_history(message.from_user.id, history_type, operation.cards,
                          question=operation.question, username=get_username_from_message(message))
@@ -2049,6 +2080,11 @@ async def send_v8_reading(message: Message, mode: str | None = None):
         }[operation.mode]
         text = (f"{heading}\n\n🃏 Выпавшие карты\n\n"
                 f"{format_cards_list(operation.cards)}\n\n{result['text']}")
+        if metered:
+            reservation = await payments_service.get_reservation(key, message.from_user.id)
+            saved = json.loads(reservation['result_json'])
+            if saved.get('credit_notice'):
+                text += "\n\n" + saved['credit_notice']
         if not operation.images_sent:
             await send_card_images(message, operation.cards)
             operation.images_sent = True
@@ -2058,6 +2094,114 @@ async def send_v8_reading(message: Message, mode: str | None = None):
             await message.answer(text[offset:offset + 3800],
                                  reply_markup=main_menu if offset + 3800 >= len(text) else None)
         operation.delivered = True
+        if metered:
+            await payments_service.mark_delivery(key)
+
+
+def buy_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{credits} раскл. — {stars} ⭐", callback_data=f"moon_buy:{package}")]
+        for package, (stars, credits) in PACKAGES.items()
+    ])
+
+
+async def show_balance(message):
+    try:
+        if not payments_service.ready and not payments_service.exists:
+            raise PaymentError("Платежи недоступны")
+        balance = await payments_service.balance(message.from_user.id)
+        keyboard = buy_keyboard() if payments_service.requested and payments_service.ready else main_menu
+        await message.answer(balance_text(balance), reply_markup=keyboard)
+    except PaymentError:
+        await message.answer(UNAVAILABLE)
+
+
+async def payment_admin_stats():
+    try:
+        s = await payments_service.statistics()
+        return (f"\n\n⭐ Платежи\nПокупок: {s['purchases']}\nПолучено Stars: {s['stars']}"
+                f"\nВыдано платных кредитов: {s['credits']}\nИспользовано бесплатных: {s['free']}"
+                f"\nИспользовано платных: {s['paid']}\nВозвратов: {s['refunds']}"
+                f"\nПользователей с балансом: {s['active']}")
+    except PaymentError:
+        return "\n\n⭐ Платёжная статистика временно недоступна."
+
+
+async def refund_purchase(message, charge_id):
+    if not is_admin(message.from_user.id):
+        await message.answer("Команда недоступна.")
+        return
+    if not charge_id or len(charge_id) > 4096:
+        await message.answer("Используйте /refundstars и идентификатор платежа.")
+        return
+    try:
+        purchase, claimed = await payments_service.claim_refund(charge_id)
+        if not claimed:
+            await message.answer("Возврат уже выполнен." if purchase['status'] == 'refunded'
+                                 else "Возврат ожидает подтверждения. Повторный запрос не отправлен.")
+            return
+        # A persistent claim prevents duplicate Bot API refunds. An uncertain
+        # outcome stays pending for reconciliation, never silently retried.
+        try:
+            refunded = await bot.refund_star_payment(
+                user_id=purchase['user_id'], telegram_payment_charge_id=charge_id)
+        except Exception:
+            await message.answer("Не удалось подтвердить возврат. Нужна проверка платежа; повторный запрос не отправлен.")
+            return
+        if not refunded:
+            await message.answer("Возврат ожидает подтверждения. Обратитесь к поддержке.")
+            return
+        await payments_service.complete_refund(charge_id)
+        await message.answer("Stars возвращены, баланс скорректирован.")
+    except PaymentError:
+        await message.answer("Не удалось обработать возврат. Проверьте платёж через поддержку.")
+
+
+@dp.callback_query(F.data.startswith("moon_buy:"))
+async def buy_package(callback: CallbackQuery):
+    await callback.answer()
+    package = (callback.data or "").removeprefix("moon_buy:")
+    try:
+        invoice = await payments_service.issue_invoice(callback.from_user.id, package)
+    except PaymentError:
+        if callback.message:
+            await callback.message.answer(UNAVAILABLE)
+        return
+    if callback.message:
+        try:
+            await callback.message.answer_invoice(
+                title=f"Moon Mentor: {invoice['credits']} раскл.",
+                description="Кредиты для раскладов на свой вопрос, отношения и карьеру.",
+                payload=invoice['payload'], currency="XTR",
+                prices=[LabeledPrice(label="Расклады Moon Mentor", amount=invoice['stars'])],
+            )
+        except Exception:
+            await callback.message.answer("Не удалось открыть счёт. Попробуйте немного позже.")
+
+
+@dp.pre_checkout_query()
+async def checkout_payment(query: PreCheckoutQuery):
+    try:
+        await asyncio.wait_for(payments_service.validate_checkout(
+            query.from_user.id, query.invoice_payload, query.currency, query.total_amount, query.id), timeout=3)
+        ok = True
+    except (PaymentError, TimeoutError):
+        ok = False
+    await query.answer(ok=ok, **({} if ok else {"error_message": "Не удалось проверить покупку. Откройте новый счёт или обратитесь в /paysupport."}))
+
+
+@dp.message(F.successful_payment)
+async def successful_payment(message: Message):
+    payment = message.successful_payment
+    try:
+        # Finalize valid in-flight invoices even if sales were switched off.
+        credited = await payments_service.credit_purchase(message.from_user.id, payment.invoice_payload,
+            payment.currency, payment.total_amount, payment.telegram_payment_charge_id)
+        balance = await payments_service.balance(message.from_user.id)
+        receipt = "Покупка учтена." if credited else "Эта покупка уже учтена. Баланс не изменён."
+        await message.answer(receipt + "\n\n" + balance_text(balance), reply_markup=main_menu)
+    except PaymentError:
+        await message.answer("Не удалось подтвердить покупку. Обратитесь в /paysupport — повторно платить не нужно.")
 
 
 
@@ -2076,7 +2220,55 @@ async def start_command(message: Message):
 @dp.message()
 async def handle_buttons(message: Message):
     user_id = message.from_user.id
-    if reading_service_v8.get((message.chat.id, message.message_id)) is not None:
+    if message.text == "/paymentdiag":
+        if not is_admin(user_id):
+            await message.answer("Команда недоступна.")
+            return
+        try:
+            diagnostic = await payments_service.diagnostics()
+            text = (f"⭐ Диагностика платежей\nreserved: {diagnostic['reserved']}"
+                    f"\nrefund_pending: {diagnostic['refund_pending']}"
+                    f"\nОтклонённых событий: {diagnostic['audit_events']}")
+            for label in ('readings', 'refunds'):
+                for reference, created_at in diagnostic[label]:
+                    text += f"\n{reference} | {created_at}"
+            await message.answer(text + "\nПоказано до 20 операций каждого типа. Записи не изменены.")
+        except PaymentError:
+            await message.answer("Платёжная диагностика временно недоступна.")
+        return
+    if message.text and message.text.split(maxsplit=1)[:1] == ["/refundstars"]:
+        await refund_purchase(message, message.text.partition(" ")[2].strip())
+        return
+    if payments_service.requested or payments_service.exists:
+        if message.text in {"/balance", "🌙 Мой баланс"}:
+            await show_balance(message)
+            return
+        if message.text == "⭐ Купить расклады":
+            if payments_service.requested and payments_service.ready:
+                await message.answer("Выберите пакет раскладов за Telegram Stars:", reply_markup=buy_keyboard())
+            else:
+                await message.answer(UNAVAILABLE)
+            return
+        if message.text == "/paysupport":
+            user_mode[user_id] = None
+            contact = os.getenv("PAY_SUPPORT_CONTACT", "").strip()
+            await message.answer("По вопросам оплаты: " + contact if contact else
+                                 "Ответьте сообщением с описанием проблемы с оплатой. Администратор поможет разобраться.")
+            return
+    key = (message.chat.id, message.message_id)
+    persisted = None
+    if payments_service.exists:
+        try:
+            persisted = await payments_service.get_reservation(key, user_id)
+        except PaymentError:
+            pass
+    if persisted is not None:
+        # Restarts lose user_mode and the process cache. A durable operation is
+        # handled before navigation/state dispatch and never regenerated.
+        await send_v8_reading(message, paid=True)
+        return
+    if (reading_service_v8.get((message.chat.id, message.message_id)) is not None
+            or paid_readings.has((message.chat.id, message.message_id))):
         await send_v8_reading(message)
         return
 
@@ -2110,7 +2302,10 @@ async def handle_buttons(message: Message):
             await message.answer("Команда недоступна.")
             return
         user_mode[user_id] = "admin"
-        await message.answer(build_admin_stats_text(), reply_markup=admin_menu)
+        stats_text = build_admin_stats_text()
+        if payments_service.requested:
+            stats_text += await payment_admin_stats()
+        await message.answer(stats_text, reply_markup=admin_menu)
         return
 
     if message.text in {"/recent", "📌 Последние запросы"}:
