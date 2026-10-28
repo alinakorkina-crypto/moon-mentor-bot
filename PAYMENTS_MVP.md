@@ -15,8 +15,10 @@ spread and Moon chat keep their existing behavior.
   storage, preferably outside the checkout. Back up the ledger and signing secret
   together. If using a custom filename inside the checkout, ensure it is ignored.
 - `PAY_SUPPORT_CONTACT` optionally supplies the support contact shown by
-  `/paysupport`. Without it the bot asks for a reply describing the problem.
-- `ADMIN_IDS` controls `/refundstars <charge_id>` and the existing admin stats.
+  `/paysupport` in addition to the built-in ticket workflow; no public personal
+  contact or separate support account is required.
+- `ADMIN_IDS` controls payment ticket replies/closure, `/tickets`,
+  `/refundstars <charge_id>` and the existing admin stats.
 - Continue using standard `OPENAI_API_KEY` and existing transport/model settings.
 
 Changing these variables requires process restart. Disabling sales does not
@@ -175,8 +177,7 @@ indexes but never resets balances or automatically releases pending operations.
 - Model failure after committed release:
   `Сейчас не удалось подготовить трактовку. Попробуйте немного позже.`
   No uncommitted refund is promised; if ledger finalization fails, show unavailable.
-- Support: `По вопросам оплаты: <PAY_SUPPORT_CONTACT>` or
-  `Ответьте сообщением с описанием проблемы с оплатой. Администратор поможет разобраться.`
+- Support: built-in `/paysupport` tickets (see below).
 
 ## Offline verification
 
@@ -185,3 +186,49 @@ then run `python -B run_tests_offline.py`. The suite blocks sockets and real
 subprocesses, uses real aiogram types with mocked Telegram/model methods, and
 exercises SQLite concurrency with temporary ledgers. No tests submit payments,
 refunds, invoices or live model requests.
+
+
+## Built-in private payment support
+
+`/paysupport` works regardless of `PAYMENTS_ENABLED` and without a signing secret.
+It asks for one text message (maximum 1500 characters), warns against sharing card
+details/passwords/codes, and persists the waiting session. Recognizable card
+numbers, credentials, invoice payloads and explicitly labelled passwords/codes
+are rejected before storage. This filter cannot identify every secret in free
+text: administrators must treat the ledger and backups as private personal data.
+An optional `PAY_SUPPORT_CONTACT` is only an additional plain-text contact.
+
+The next message creates a random 10-hex-digit public ticket number, clears the
+support session and restores the usual keyboard. There is at most one open ticket
+per user (unique partial index) and a five-minute interval between ticket creation
+times, including after closure. Commands/menu navigation cancel a waiting session.
+Support messages never enter reading generation, credit accounting or analytics.
+Support commands accept private chats only.
+
+All existing `ADMIN_IDS` receive a plain-text notification with the ticket,
+user identity and description. `/tickets` is admin-only and shows at most ten
+open tickets, with a 200-character preview. `/replyticket NUMBER reply` sends a
+reply of at most 1500 characters to the ticket owner. `/closeticket NUMBER` closes
+it and notifies the owner. Unknown/closed/invalid tickets return neutral errors.
+`/paymentdiag` adds only an aggregate open-ticket count, never ticket content.
+
+Tables are created additively in the same ledger transaction:
+
+- `support_sessions`: user ID (PK), chat ID, creation time; survives restarts.
+- `support_tickets`: random number (PK), user ID, username/display name, original
+  description, open/closed status, creation/update times; one open per user.
+- `support_operations`: Telegram `(chat_id,message_id)` (PK), operation kind,
+  ticket FK and creation time; deduplicates creation/reply/closure across restarts.
+- `support_messages`: ticket FK, recipient, plain text, claimed/sent/uncertain
+  status and creation/update times. Contains notifications and outgoing replies.
+
+Each operation and its outgoing delivery claims are committed before any Telegram
+send. Only the transaction creating a claim may send it; concurrent/replayed
+commands return no outgoing messages. A failure, timeout, crash or cancellation
+can leave a claimed/uncertain message: **it is never automatically resent**, even
+if its delivery outcome is unknown. This prioritizes avoiding duplicate replies
+and may lose a notification. Admins can inspect `/tickets`; after checking the
+conversation they can intentionally issue a new reply (a new Telegram message).
+Never blindly replay uncertain sends or reset operation records. An acknowledgement
+failure also leaves the created ticket intact and cannot start a reading on retry.
+No support content/identities are logged or included in general analytics.
