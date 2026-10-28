@@ -18,6 +18,8 @@ load_dotenv()
 from reading_service_v8 import ReadingServiceV8, FAILURE_MESSAGE, v8_enabled
 from payments_service import PaymentsService, PaymentError, PACKAGES, UNAVAILABLE, balance_text
 from payments_readings import PaidReadings
+from support_handlers import handle_support
+from support_service import SupportService
 
 reading_service_v8 = ReadingServiceV8()
 payments_service = PaymentsService.from_env()
@@ -2220,6 +2222,9 @@ async def start_command(message: Message):
 @dp.message()
 async def handle_buttons(message: Message):
     user_id = message.from_user.id
+    if await handle_support(message, payments=payments_service, bot=bot, admins=ADMIN_IDS,
+                            user_mode=user_mode, menu=main_menu):
+        return
     if message.text == "/paymentdiag":
         if not is_admin(user_id):
             await message.answer("Команда недоступна.")
@@ -2228,7 +2233,8 @@ async def handle_buttons(message: Message):
             diagnostic = await payments_service.diagnostics()
             text = (f"⭐ Диагностика платежей\nreserved: {diagnostic['reserved']}"
                     f"\nrefund_pending: {diagnostic['refund_pending']}"
-                    f"\nОтклонённых событий: {diagnostic['audit_events']}")
+                    f"\nОтклонённых событий: {diagnostic['audit_events']}"
+                    f"\nОткрытых обращений: {await SupportService(payments_service).count()}")
             for label in ('readings', 'refunds'):
                 for reference, created_at in diagnostic[label]:
                     text += f"\n{reference} | {created_at}"
@@ -2248,12 +2254,6 @@ async def handle_buttons(message: Message):
                 await message.answer("Выберите пакет раскладов за Telegram Stars:", reply_markup=buy_keyboard())
             else:
                 await message.answer(UNAVAILABLE)
-            return
-        if message.text == "/paysupport":
-            user_mode[user_id] = None
-            contact = os.getenv("PAY_SUPPORT_CONTACT", "").strip()
-            await message.answer("По вопросам оплаты: " + contact if contact else
-                                 "Ответьте сообщением с описанием проблемы с оплатой. Администратор поможет разобраться.")
             return
     key = (message.chat.id, message.message_id)
     persisted = None

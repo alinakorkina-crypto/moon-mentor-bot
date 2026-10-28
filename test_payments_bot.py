@@ -264,7 +264,7 @@ class PaymentsBotTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.handle_buttons(message)
         self.assertIsNone(self.bot.user_mode[77])
         self.model.assert_not_called()
-        self.assertIn('описанием проблемы',message.answer.call_args.args[0])
+        self.assertIn('Опишите проблему с оплатой',message.answer.call_args.args[0])
         with patch.dict(os.environ,{'PAY_SUPPORT_CONTACT':'@offline_support'}):
             await self.bot.handle_buttons(message)
             self.assertIn('@offline_support',message.answer.call_args.args[0])
