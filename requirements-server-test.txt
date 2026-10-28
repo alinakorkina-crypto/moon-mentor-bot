@@ -1,0 +1,8 @@
+# Exact server versions for reproducible release verification.
+aiogram==3.29.0
+openai==2.44.0
+google-genai==2.10.0
+python-dotenv==1.2.2
+aiosqlite==0.22.1
+httpx==0.28.1
+pydantic==2.13.4

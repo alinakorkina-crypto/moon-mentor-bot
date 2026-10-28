@@ -2,3 +2,6 @@ aiogram
 openai
 python-dotenv
 aiosqlite
+google-genai
+httpx
+pydantic
