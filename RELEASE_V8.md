@@ -1,8 +1,9 @@
 # Reading Engine v8: runtime configuration and offline verification
 
 `READING_ENGINE` defaults to `legacy`. Setting it to `v8` selects the new
-generator only for question, love and career three-card readings. Daily card,
-full spread and Moon chat keep the legacy behavior and Google credentials.
+generator only for question, love and career three-card readings. Daily card
+keeps its local behavior. Full spread, Moon chat and the legacy generator use
+the same OpenAI model through a plain-text transport.
 
 Use the standard `OPENAI_API_KEY`. `OPENAI_MODEL` defaults to `gpt-5.6-terra`.
 The OpenAI SDK is the default transport. `OPENAI_TRANSPORT=curl` optionally
@@ -24,7 +25,7 @@ python -m venv /tmp/moon-v8-check
 /tmp/moon-v8-check/bin/python -B run_tests_offline.py
 ```
 
-The suite imports real aiogram and google-genai, but blocks socket connections,
+The suite imports real aiogram and OpenAI, but blocks socket connections,
 real subprocesses and polling. It substitutes model and Telegram responses.
 The runtime requirements do not require OpenAI 3.x; the verified SDK is 2.44.0.
 

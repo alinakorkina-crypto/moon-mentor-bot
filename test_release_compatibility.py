@@ -7,8 +7,6 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from aiogram import Bot, Dispatcher
-from google import genai
-
 import reading_engine_v8 as engine
 import reading_service_v8 as service
 
@@ -27,7 +25,7 @@ class ReleaseCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                 spec.loader.exec_module(bot_module)
                 self.assertIsInstance(bot_module.bot, Bot)
                 self.assertIsInstance(bot_module.dp, Dispatcher)
-                self.assertIsInstance(bot_module.ask_gemini.__globals__['client'], genai.Client)
+                self.assertTrue(callable(bot_module.ask_openai))
                 self.assertEqual(service.v8_enabled(), flag == 'v8')
                 polling.assert_not_awaited()
                 await bot_module.bot.session.close()
@@ -53,6 +51,14 @@ class ReleaseCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                 for name in names:
                     self.assertIsNone(re.match(r'(?:reading_engine_v[2-7]|ai_reader_v[3-7]|preview_reading_v\d)', name))
         self.assertFalse(Path('AGENTS.md').exists())
+        self.assertNotIn('google-genai', Path('requirements.txt').read_text())
+        self.assertNotIn('google-genai', Path('requirements-server-test.txt').read_text())
+        forbidden_reader_name = 'ask_' + 'gemini'
+        for path in Path('.').glob('*.py'):
+            if path.name == Path(__file__).name:
+                continue
+            self.assertNotIn('google' + '.genai', path.read_text())
+            self.assertNotIn(forbidden_reader_name, path.read_text())
 
     async def test_name_matching_and_layout_keep_final_behavior(self):
         cards = [{'name': 'Колесница'}, {'name': 'Башня'}, {'name': 'Звезда'}]

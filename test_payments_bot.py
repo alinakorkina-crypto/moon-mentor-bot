@@ -90,7 +90,7 @@ class PaymentsBotTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(row['status'],'released')
                 await self.service.finish((100,index),success=False)
                 self.assertEqual((await self.service.balance(77)).free,3)
-        self.bot.ask_gemini.assert_not_called()
+        self.bot.ask_openai.assert_not_called()
         self.bot.save_history.assert_not_called()
 
     async def test_paid_credits_after_free_and_duplicate_message(self):

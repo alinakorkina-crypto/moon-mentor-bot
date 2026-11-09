@@ -11,10 +11,9 @@ import os
 import re
 from datetime import datetime
 from collections import Counter
-from ai_reader import ask_gemini
-
 load_dotenv()
 
+from ai_reader import ask_openai
 from reading_service_v8 import ReadingServiceV8, FAILURE_MESSAGE, v8_enabled
 from payments_service import PaymentsService, PaymentError, PACKAGES, UNAVAILABLE, balance_text
 from payments_readings import PaidReadings
@@ -1942,7 +1941,7 @@ def make_career_reading(user_question: str, user_id: int, username: str | None =
         topic="career",
     )
 
-    ai_text = ask_gemini(prompt)
+    ai_text = ask_openai(prompt)
 
     if ai_text:
         ai_text = validate_final_answer(ai_text, cards, user_question, "Карьерный расклад")
@@ -2408,7 +2407,7 @@ async def handle_buttons(message: Message):
         await message.answer("🌙 Размышляю над вашими словами...")
 
         context_text = get_chat_context(user_id)
-        ai_text = ask_gemini(build_chat_prompt(message.text, context_text))
+        ai_text = ask_openai(build_chat_prompt(message.text, context_text))
 
         if ai_text:
             save_chat_message(user_id, "user", message.text)
@@ -2516,7 +2515,7 @@ async def handle_buttons(message: Message):
             topic="general",
         )
 
-        ai_text = ask_gemini(prompt)
+        ai_text = ask_openai(prompt)
 
         if ai_text:
             ai_text = validate_final_answer(

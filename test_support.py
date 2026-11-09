@@ -143,7 +143,7 @@ class SupportBotTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('<b>текст</b>', call.args[1])
         self.assertNotIn('покупку', stream.getvalue())
         self.fixture.model.assert_not_called()
-        self.bot.ask_gemini.assert_not_called()
+        self.bot.ask_openai.assert_not_called()
         self.bot.draw_cards.assert_not_called()
         self.bot.save_history.assert_not_called()
         self.bot.update_analytics.assert_not_called()
@@ -246,7 +246,7 @@ class SupportBotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.support.count(), 1)
         self.assertEqual(self.send.call_count, len(self.bot.ADMIN_IDS))
         self.fixture.model.assert_not_called()
-        self.bot.ask_gemini.assert_not_called()
+        self.bot.ask_openai.assert_not_called()
 
     async def test_nontext_pending_does_not_enter_reading(self):
         await self.bot.handle_buttons(self.message('/paysupport'))

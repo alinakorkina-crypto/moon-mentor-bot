@@ -29,14 +29,14 @@ class BotReadingTests(unittest.IsolatedAsyncioTestCase):
         environment.start()
         self.addCleanup(environment.stop)
 
-        # Real aiogram types and the real google-genai client are constructed,
-        # but all network calls, polling and subprocess execution are forbidden.
+        # Real aiogram and OpenAI modules are imported, but all network calls,
+        # polling and subprocess execution are forbidden.
         spec = importlib.util.spec_from_file_location('offline_bot', Path('main.py'))
         self.bot = importlib.util.module_from_spec(spec)
         with patch('dotenv.load_dotenv') as load:
             spec.loader.exec_module(self.bot)
             load.assert_called_once()
-        self.bot.ask_gemini = Mock(side_effect=AssertionError('Gemini forbidden'))
+        self.bot.ask_openai = Mock(side_effect=AssertionError('plain-text OpenAI forbidden'))
         self.actual_save_history = self.bot.save_history
         self.bot.save_history = Mock()
         self.bot.draw_cards = Mock(return_value=INITIATIVE_CARDS)
@@ -104,7 +104,7 @@ class BotReadingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.model.call_count, 3)
         self.assertEqual(self.bot.draw_cards.call_count, 3)
         self.assertTrue(all(t != threading.get_ident() for t in worker_threads))
-        self.bot.ask_gemini.assert_not_called()
+        self.bot.ask_openai.assert_not_called()
 
     async def test_all_routes_go_through_v8(self):
         os.environ['READING_ENGINE'] = 'v8'
@@ -146,7 +146,7 @@ class BotReadingTests(unittest.IsolatedAsyncioTestCase):
                 {'question': 'personal_question', 'love': 'love', 'career': 'career'}[mode],
                 INITIATIVE_CARDS, question=message.text, username='@offline_user')
         self.assertEqual(self.bot.save_history.call_count, 3)
-        self.bot.ask_gemini.assert_not_called()
+        self.bot.ask_openai.assert_not_called()
 
     async def test_failures_are_neutral_and_cached_without_history_or_fallback(self):
         os.environ['READING_ENGINE'] = 'v8'
@@ -170,7 +170,7 @@ class BotReadingTests(unittest.IsolatedAsyncioTestCase):
                 message.answer_media_group.assert_not_awaited()
                 message.answer_photo.assert_not_awaited()
         self.bot.save_history.assert_not_called()
-        self.bot.ask_gemini.assert_not_called()
+        self.bot.ask_openai.assert_not_called()
 
     async def test_redelivery_after_telegram_failure_reuses_success(self):
         os.environ['READING_ENGINE'] = 'v8'
@@ -209,8 +209,8 @@ class BotReadingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_day_full_and_chat_keep_legacy_path_under_v8(self):
         os.environ['READING_ENGINE'] = 'v8'
-        self.bot.ask_gemini.side_effect = None
-        self.bot.ask_gemini.return_value = 'legacy AI text'
+        self.bot.ask_openai.side_effect = None
+        self.bot.ask_openai.return_value = 'OpenAI text'
         with patch.object(self.bot, 'send_reading', new_callable=AsyncMock) as send, \
              patch.object(self.bot, 'validate_final_answer', return_value='legacy validated') as validate, \
              patch.object(self.bot, 'send_text', new_callable=AsyncMock) as send_text:
@@ -228,7 +228,7 @@ class BotReadingTests(unittest.IsolatedAsyncioTestCase):
             self.bot.user_mode[77] = 'chat'
             await self.bot.handle_buttons(self.message('Хочу поговорить'))
             send_text.assert_awaited_once()
-            self.assertEqual(self.bot.ask_gemini.call_count, 2)
+            self.assertEqual(self.bot.ask_openai.call_count, 2)
         self.model.assert_not_called()
 
     async def test_navigation_and_start_remain_unchanged(self):
